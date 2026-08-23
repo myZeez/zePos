@@ -1,0 +1,19 @@
+UJI COBA KASIR TOKO PLASTIK BERKAH
+==================================
+
+1. Ekstrak seluruh isi ZIP.
+2. Jalankan kasir_plx.exe dari folder hasil ekstrak.
+3. Jangan pindahkan file EXE sendirian; DLL dan folder data harus tetap bersama.
+4. Untuk memuat data contoh:
+   Pengaturan -> Restore dari file -> pilih:
+   data-demo\kasir_berkah_demo.sqlite
+5. Ikuti PANDUAN-UJI-COBA.md dan isi CHECKLIST-UJI-COBA.md.
+
+Data aplikasi tersimpan di folder Application Support Windows, bukan di
+folder aplikasi. Database demo aman dipakai untuk pengujian dan dapat
+direstore kembali untuk mengulang kondisi awal.
+
+Catatan:
+- Windows SmartScreen dapat tampil karena build uji coba belum menggunakan
+  sertifikat code-signing.
+- Pengujian printer harus memakai perangkat nota/label toko yang sebenarnya.

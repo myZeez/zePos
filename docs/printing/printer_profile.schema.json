@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/printer-profile.schema.json",
+  "title": "Printer Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "displayName",
+    "kind",
+    "platform",
+    "transport",
+    "selectors",
+    "capabilities",
+    "defaults"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "displayName": { "type": "string", "minLength": 1 },
+    "vendor": { "type": "string" },
+    "model": { "type": "string" },
+    "kind": {
+      "enum": ["label", "receipt", "document", "hybrid"]
+    },
+    "platform": {
+      "enum": ["windows", "android", "linux", "macos", "any"]
+    },
+    "transport": {
+      "enum": [
+        "windows_driver",
+        "raw_spooler",
+        "network_raw",
+        "bluetooth"
+      ]
+    },
+    "selectors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "queueName": { "type": "string" },
+        "driverName": { "type": "string" },
+        "usbVid": { "type": "string", "pattern": "^[0-9A-Fa-f]{4}$" },
+        "usbPid": { "type": "string", "pattern": "^[0-9A-Fa-f]{4}$" },
+        "devicePathContains": { "type": "string" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pdf", "raw", "maxWidthMm", "dpi"],
+      "properties": {
+        "pdf": { "type": "boolean" },
+        "raw": { "type": "boolean" },
+        "rawLanguage": {
+          "enum": ["none", "escpos", "tspl", "zpl", "cpcl"]
+        },
+        "maxWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "dpi": { "type": "integer", "minimum": 72 },
+        "cashDrawer": { "type": "boolean", "default": false },
+        "sensorModes": {
+          "type": "array",
+          "items": { "enum": ["gap", "black_mark", "continuous"] },
+          "uniqueItems": true
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dispatchMode", "origin"],
+      "properties": {
+        "dispatchMode": {
+          "enum": ["direct", "system_dialog", "ask_each_time"]
+        },
+        "origin": { "enum": ["top_left", "top_center", "top_right"] },
+        "safeMarginMm": { "type": "number", "minimum": 0 },
+        "usePrinterSettings": { "type": "boolean" },
+        "receiptWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "labelWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "labelHeightMm": { "type": "number", "exclusiveMinimum": 0 },
+        "gapMm": { "type": "number", "minimum": 0 },
+        "columns": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requiresElevation": { "type": "boolean" },
+        "dynamicUsbPort": { "type": "boolean" },
+        "clearUnfinishedJobsOnRepair": { "type": "boolean" },
+        "restartSpoolerOnRepair": { "type": "boolean" },
+        "registry": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "name", "type", "value"],
+            "properties": {
+              "path": { "type": "string" },
+              "name": { "type": "string" },
+              "type": { "enum": ["string", "dword"] },
+              "value": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,226 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
+import 'package:zepos/app/routing/widgets/app_navigation.dart';
+import 'package:zepos/data/zepos_database.dart';
+import 'package:zepos/features/checkout/cashier_page.dart';
+import 'package:zepos/features/dashboard/dashboard_page.dart';
+import 'package:zepos/features/inventory/stock_page.dart';
+import 'package:zepos/features/products/products_page.dart';
+import 'package:zepos/features/reports/reports_page.dart';
+import 'package:zepos/features/settings/settings_page.dart';
+import 'package:zepos/features/transactions/transactions_page.dart';
+import 'package:zepos/ui/zepos_tokens.dart';
+
+class ZePosShell extends StatefulWidget {
+  const ZePosShell({
+    super.key,
+    required this.database,
+    required this.onDatabaseRestored,
+  });
+
+  final ZePosDatabase database;
+  final VoidCallback onDatabaseRestored;
+
+  @override
+  State<ZePosShell> createState() => _ZePosShellState();
+}
+
+class _ZePosShellState extends State<ZePosShell> {
+  int _activeSection = 1;
+  int _dataVersion = 0;
+  String _scannerBuffer = '';
+  String _scannerQuery = '';
+  Timer? _scannerTimer;
+
+  @override
+  void dispose() {
+    _scannerTimer?.cancel();
+    super.dispose();
+  }
+
+  void _selectSection(int index) {
+    setState(() {
+      _activeSection = index;
+      _dataVersion++;
+    });
+  }
+
+  KeyEventResult _listenForBarcode(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final focusedWidget = FocusManager.instance.primaryFocus?.context?.widget;
+    if (focusedWidget is EditableText) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.enter) {
+      if (_scannerBuffer.length >= 6) {
+        setState(() {
+          _scannerQuery = _scannerBuffer;
+          _scannerBuffer = '';
+          _activeSection = 1;
+          _dataVersion++;
+        });
+        _scannerTimer?.cancel();
+        return KeyEventResult.handled;
+      }
+      _scannerBuffer = '';
+      return KeyEventResult.ignored;
+    }
+    final character = event.character;
+    if (character == null || !RegExp(r'[0-9A-Za-z\-]').hasMatch(character)) {
+      return KeyEventResult.ignored;
+    }
+    _scannerBuffer += character;
+    _scannerTimer?.cancel();
+    _scannerTimer = Timer(const Duration(milliseconds: 400), () {
+      _scannerBuffer = '';
+    });
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final mobile = constraints.maxWidth < 720;
+        return Scaffold(
+          body: SafeArea(
+            child: Focus(
+              autofocus: true,
+              onKeyEvent: _listenForBarcode,
+              child: Column(
+                children: [
+                  if (mobile)
+                    MobileTopBar(
+                      database: widget.database,
+                      dataVersion: _dataVersion,
+                      onViewStockAlerts: () => _selectSection(3),
+                    )
+                  else
+                    DesktopSidebar(
+                      activeIndex: _activeSection,
+                      onChanged: _selectSection,
+                      database: widget.database,
+                      dataVersion: _dataVersion,
+                      onViewStockAlerts: () => _selectSection(3),
+                    ),
+                  Expanded(child: _buildContent(_activeSection)),
+                ],
+              ),
+            ),
+          ),
+          bottomNavigationBar: mobile
+              ? NavigationBar(
+                  selectedIndex: _activeSection <= 3 ? _activeSection : 4,
+                  onDestinationSelected: (index) {
+                    if (index < 4) {
+                      _selectSection(index);
+                    } else {
+                      _openMobileMoreMenu();
+                    }
+                  },
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.home_outlined),
+                      selectedIcon: Icon(Icons.home),
+                      label: 'Beranda',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.point_of_sale_outlined),
+                      selectedIcon: Icon(Icons.point_of_sale),
+                      label: 'Kasir',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.inventory_2_outlined),
+                      selectedIcon: Icon(Icons.inventory_2),
+                      label: 'Produk',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.warehouse_outlined),
+                      selectedIcon: Icon(Icons.warehouse),
+                      label: 'Stok',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.more_horiz),
+                      label: 'Lainnya',
+                    ),
+                  ],
+                )
+              : null,
+        );
+      },
+    );
+  }
+
+  Future<void> _openMobileMoreMenu() async {
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            ZeSpace.md,
+            0,
+            ZeSpace.md,
+            ZeSpace.md,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Menu lainnya', style: ZeText.sectionTitle),
+              ),
+              const SizedBox(height: ZeSpace.sm),
+              for (final entry in const [
+                (4, 'Laporan', Icons.bar_chart_outlined),
+                (5, 'Transaksi', Icons.receipt_long_outlined),
+                (6, 'Pengaturan', Icons.settings_outlined),
+              ])
+                ListTile(
+                  minTileHeight: 52,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: ZeRadius.control,
+                  ),
+                  selected: _activeSection == entry.$1,
+                  leading: Icon(entry.$3),
+                  title: Text(entry.$2),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.pop(context, entry.$1),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected != null) _selectSection(selected);
+  }
+
+  Widget _buildContent(int section) {
+    switch (section) {
+      case 0:
+        return DashboardPage(
+          database: widget.database,
+          onStartCashier: () => _selectSection(1),
+        );
+      case 1:
+        return CashierPage(
+          key: ValueKey('cashier_$_scannerQuery'),
+          database: widget.database,
+          initialSearch: _scannerQuery,
+          onSaleCompleted: () => setState(() => _dataVersion++),
+        );
+      case 2:
+        return ProductsPage(database: widget.database);
+      case 3:
+        return StockPage(database: widget.database);
+      case 4:
+        return ReportsPage(database: widget.database);
+      case 5:
+        return TransactionsPage(database: widget.database);
+      default:
+        return SettingsPage(
+          database: widget.database,
+          onDatabaseRestored: widget.onDatabaseRestored,
+        );
+    }
+  }
+}

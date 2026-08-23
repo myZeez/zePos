@@ -1,0 +1,33 @@
+{
+  "id": "generic-thermal-receipt-windows",
+  "displayName": "Generic Thermal Receipt (Windows Driver)",
+  "vendor": "Generic",
+  "model": "58/80 mm",
+  "kind": "receipt",
+  "platform": "windows",
+  "transport": "windows_driver",
+  "selectors": {},
+  "capabilities": {
+    "pdf": true,
+    "raw": true,
+    "rawLanguage": "escpos",
+    "maxWidthMm": 80,
+    "dpi": 203,
+    "cashDrawer": true,
+    "sensorModes": ["continuous"]
+  },
+  "defaults": {
+    "dispatchMode": "direct",
+    "origin": "top_left",
+    "safeMarginMm": 3,
+    "usePrinterSettings": false,
+    "receiptWidthMm": 80
+  },
+  "setup": {
+    "requiresElevation": false,
+    "dynamicUsbPort": false,
+    "clearUnfinishedJobsOnRepair": false,
+    "restartSpoolerOnRepair": false,
+    "registry": []
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "id": "blueprint-eco80bt-windows",
+  "displayName": "Blueprint ECO80BT (Windows Driver)",
+  "vendor": "Blueprint",
+  "model": "ECO80BT",
+  "kind": "label",
+  "platform": "windows",
+  "transport": "windows_driver",
+  "selectors": {
+    "queueName": "80Label Printer",
+    "driverName": "80Label",
+    "usbVid": "09C5",
+    "usbPid": "807A"
+  },
+  "capabilities": {
+    "pdf": true,
+    "raw": false,
+    "rawLanguage": "none",
+    "maxWidthMm": 110,
+    "dpi": 203,
+    "cashDrawer": false,
+    "sensorModes": ["gap"]
+  },
+  "defaults": {
+    "dispatchMode": "system_dialog",
+    "origin": "top_left",
+    "safeMarginMm": 1.5,
+    "usePrinterSettings": true,
+    "labelWidthMm": 40,
+    "labelHeightMm": 20,
+    "gapMm": 2,
+    "columns": 1
+  },
+  "setup": {
+    "requiresElevation": true,
+    "repairScript": "installer/configure_eco80bt.ps1",
+    "dynamicUsbPort": true,
+    "clearUnfinishedJobsOnRepair": true,
+    "restartSpoolerOnRepair": true,
+    "registry": [
+      {
+        "path": "SYSTEM\\CurrentControlSet\\Control\\Print\\Printers\\80Label Printer\\PrinterDriverData",
+        "name": "DeviceCapabilities.PaperName",
+        "type": "string",
+        "value": "40.00x20.00(mm)"
+      },
+      {
+        "path": "SYSTEM\\CurrentControlSet\\Control\\Print\\Printers\\80Label Printer\\PrinterDriverData",
+        "name": "DeviceCapabilities.PaperWidth",
+        "type": "dword",
+        "value": 400
+      },
+      {
+        "path": "SYSTEM\\CurrentControlSet\\Control\\Print\\Printers\\80Label Printer\\PrinterDriverData",
+        "name": "DeviceCapabilities.PaperLength",
+        "type": "dword",
+        "value": 200
+      },
+      {
+        "path": "SYSTEM\\CurrentControlSet\\Control\\Print\\Printers\\80Label Printer\\PrinterDriverData",
+        "name": "DEVMODE.ForceUseDriverSelectedPaperSize",
+        "type": "dword",
+        "value": 1
+      },
+      {
+        "path": "SYSTEM\\CurrentControlSet\\Control\\Print\\Printers\\80Label Printer\\PrinterDriverData",
+        "name": "oemuni.HorizontalPrintAlignment",
+        "type": "dword",
+        "value": 0
+      },
+      {
+        "path": "SYSTEM\\CurrentControlSet\\Control\\Print\\Printers\\80Label Printer\\PrinterDriverData",
+        "name": "oemuni.HorizontalPrintOffset",
+        "type": "dword",
+        "value": 0
+      }
+    ]
+  }
+}

@@ -40,7 +40,9 @@ lib/
     settings/                     profil toko, kredensial, printer
   core/
     formatting/                   formatter rupiah, tanggal, label status
-    printing/                     adapter dan model printer
+    hardware/                     deteksi scanner barcode
+    import/                       impor produk dari Excel
+    printing/                     adapter, model printer, laci uang
   data/                           schema dan akses SQLite
   domain/                         entitas Product dan StoreProfile
   services/                       export dokumen PDF/Excel
@@ -54,9 +56,8 @@ penyusunnya. Widget yang dipakai lebih dari satu fitur tidak boleh disalin;
 pindahkan ke `lib/ui/widgets/` agar hanya ada satu sumber kebenaran.
 
 Belum dibuat: `app/theme/`, `app/localization/`, `features/backup/`,
-`core/hardware/`, `core/security/`, dan `core/errors/`. Sementara ini tema
-berada di `ui/zepos_tokens.dart`, export di `services/`, dan akses perangkat di
-`core/printing/`.
+`core/security/`, dan `core/errors/`. Sementara ini tema berada di
+`ui/zepos_tokens.dart` dan export di `services/`.
 
 ## Services
 

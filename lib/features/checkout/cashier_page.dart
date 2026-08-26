@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:zepos/core/formatting/formatters.dart';
+import 'package:zepos/core/hardware/barcode_scan_detector.dart';
 import 'package:zepos/core/printing/label_print_validator.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/data/zepos_database.dart';
@@ -19,11 +21,18 @@ class CashierPage extends StatefulWidget {
     required this.database,
     required this.onSaleCompleted,
     this.initialSearch = '',
+    this.scans,
   });
 
   final ZePosDatabase database;
   final VoidCallback onSaleCompleted;
   final String initialSearch;
+
+  /// Barcode reads from the shell's scanner listener.
+  ///
+  /// Delivered as a listenable rather than a constructor value so a scan
+  /// updates this page in place. Rebuilding it would discard the cart.
+  final ValueListenable<ScanCandidate?>? scans;
 
   @override
   State<CashierPage> createState() => _CashierPageState();
@@ -44,13 +53,33 @@ class _CashierPageState extends State<CashierPage> {
     super.initState();
     _query = widget.initialSearch;
     _searchController = TextEditingController(text: _query);
+    widget.scans?.addListener(_onScan);
     _loadProducts();
   }
 
   @override
+  void didUpdateWidget(CashierPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scans != widget.scans) {
+      oldWidget.scans?.removeListener(_onScan);
+      widget.scans?.addListener(_onScan);
+    }
+  }
+
+  @override
   void dispose() {
+    widget.scans?.removeListener(_onScan);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onScan() {
+    final code = widget.scans?.value?.code;
+    if (code == null || code.isEmpty || !mounted) return;
+    // The scan drives the search box so the cashier sees the same thing they
+    // would after typing the code, and can correct it if the read was wrong.
+    _searchController.text = code;
+    setState(() => _query = code);
   }
 
   Future<void> _loadProducts() async {

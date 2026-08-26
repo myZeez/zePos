@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
 import 'package:zepos/app/routing/widgets/app_navigation.dart';
+import 'package:zepos/core/hardware/barcode_scan_detector.dart';
+import 'package:zepos/core/hardware/barcode_scan_listener.dart';
 import 'package:zepos/data/zepos_database.dart';
 import 'package:zepos/features/checkout/cashier_page.dart';
 import 'package:zepos/features/dashboard/dashboard_page.dart';
@@ -29,14 +30,40 @@ class ZePosShell extends StatefulWidget {
 class _ZePosShellState extends State<ZePosShell> {
   int _activeSection = 1;
   int _dataVersion = 0;
-  String _scannerBuffer = '';
-  String _scannerQuery = '';
-  Timer? _scannerTimer;
+
+  /// Scans are delivered through a notifier rather than a constructor value.
+  /// Passing them down as a widget key would rebuild CashierPage on every
+  /// read, and the cart lives in that page's state -- scanning a second item
+  /// would empty the basket.
+  final ValueNotifier<ScanCandidate?> _lastScan = ValueNotifier(null);
+  late final BarcodeScanListener _scanListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _scanListener = BarcodeScanListener(
+      onScan: _handleScan,
+      // A dialog or bottom sheet on top owns the keyboard. Jumping to the
+      // cashier behind it would leave the operator typing into a form that is
+      // no longer the one they are looking at.
+      isEnabled: () => ModalRoute.of(context)?.isCurrent ?? true,
+    )..start();
+  }
 
   @override
   void dispose() {
-    _scannerTimer?.cancel();
+    _scanListener.stop();
+    _lastScan.dispose();
     super.dispose();
+  }
+
+  void _handleScan(ScanCandidate candidate) {
+    // A person typing and pressing Enter is not a scan; leaving it alone keeps
+    // search boxes and forms behaving normally.
+    if (!candidate.machineTyped) return;
+    if (!mounted) return;
+    if (_activeSection != 1) setState(() => _activeSection = 1);
+    _lastScan.value = candidate;
   }
 
   void _selectSection(int index) {
@@ -46,36 +73,6 @@ class _ZePosShellState extends State<ZePosShell> {
     });
   }
 
-  KeyEventResult _listenForBarcode(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    final focusedWidget = FocusManager.instance.primaryFocus?.context?.widget;
-    if (focusedWidget is EditableText) return KeyEventResult.ignored;
-    if (event.logicalKey == LogicalKeyboardKey.enter) {
-      if (_scannerBuffer.length >= 6) {
-        setState(() {
-          _scannerQuery = _scannerBuffer;
-          _scannerBuffer = '';
-          _activeSection = 1;
-          _dataVersion++;
-        });
-        _scannerTimer?.cancel();
-        return KeyEventResult.handled;
-      }
-      _scannerBuffer = '';
-      return KeyEventResult.ignored;
-    }
-    final character = event.character;
-    if (character == null || !RegExp(r'[0-9A-Za-z\-]').hasMatch(character)) {
-      return KeyEventResult.ignored;
-    }
-    _scannerBuffer += character;
-    _scannerTimer?.cancel();
-    _scannerTimer = Timer(const Duration(milliseconds: 400), () {
-      _scannerBuffer = '';
-    });
-    return KeyEventResult.ignored;
-  }
-
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -83,28 +80,24 @@ class _ZePosShellState extends State<ZePosShell> {
         final mobile = constraints.maxWidth < 720;
         return Scaffold(
           body: SafeArea(
-            child: Focus(
-              autofocus: true,
-              onKeyEvent: _listenForBarcode,
-              child: Column(
-                children: [
-                  if (mobile)
-                    MobileTopBar(
-                      database: widget.database,
-                      dataVersion: _dataVersion,
-                      onViewStockAlerts: () => _selectSection(3),
-                    )
-                  else
-                    DesktopSidebar(
-                      activeIndex: _activeSection,
-                      onChanged: _selectSection,
-                      database: widget.database,
-                      dataVersion: _dataVersion,
-                      onViewStockAlerts: () => _selectSection(3),
-                    ),
-                  Expanded(child: _buildContent(_activeSection)),
-                ],
-              ),
+            child: Column(
+              children: [
+                if (mobile)
+                  MobileTopBar(
+                    database: widget.database,
+                    dataVersion: _dataVersion,
+                    onViewStockAlerts: () => _selectSection(3),
+                  )
+                else
+                  DesktopSidebar(
+                    activeIndex: _activeSection,
+                    onChanged: _selectSection,
+                    database: widget.database,
+                    dataVersion: _dataVersion,
+                    onViewStockAlerts: () => _selectSection(3),
+                  ),
+                Expanded(child: _buildContent(_activeSection)),
+              ],
             ),
           ),
           bottomNavigationBar: mobile
@@ -203,9 +196,8 @@ class _ZePosShellState extends State<ZePosShell> {
         );
       case 1:
         return CashierPage(
-          key: ValueKey('cashier_$_scannerQuery'),
           database: widget.database,
-          initialSearch: _scannerQuery,
+          scans: _lastScan,
           onSaleCompleted: () => setState(() => _dataVersion++),
         );
       case 2:

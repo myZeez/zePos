@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:zepos/data/zepos_database.dart';
 import 'package:zepos/domain/product.dart';
 import 'package:zepos/features/products/widgets/product_editor_sheet.dart';
+import 'package:zepos/features/products/widgets/product_import_sheet.dart';
 import 'package:zepos/features/products/widgets/product_label_sheet.dart';
 import 'package:zepos/features/products/widgets/product_list.dart';
 import 'package:zepos/features/products/widgets/products_states.dart';
@@ -71,6 +72,14 @@ class _ProductsPageState extends State<ProductsPage> {
           product.category.toLowerCase().contains(query);
       return matchesStatus && matchesQuery;
     }).toList();
+  }
+
+  Future<void> _importProducts() async {
+    final imported = await ProductImportFlow.importFromFile(
+      context,
+      widget.database,
+    );
+    if (imported) await _loadProducts();
   }
 
   Future<void> _openEditor([Product? product]) async {
@@ -197,10 +206,36 @@ class _ProductsPageState extends State<ProductsPage> {
     return PageFrame(
       title: 'Produk',
       subtitle: 'Kelola katalog yang tampil di halaman Kasir.',
-      trailing: FilledButton.icon(
-        onPressed: () => _openEditor(),
-        icon: const Icon(Icons.add),
-        label: const Text('Tambah'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          MenuAnchor(
+            menuChildren: [
+              MenuItemButton(
+                onPressed: () => ProductImportFlow.downloadTemplate(context),
+                leadingIcon: const Icon(Icons.download_outlined),
+                child: const Text('Unduh template Excel'),
+              ),
+              MenuItemButton(
+                onPressed: _importProducts,
+                leadingIcon: const Icon(Icons.upload_file_outlined),
+                child: const Text('Pilih file untuk diimpor'),
+              ),
+            ],
+            builder: (context, controller, _) => OutlinedButton.icon(
+              onPressed: () =>
+                  controller.isOpen ? controller.close() : controller.open(),
+              icon: const Icon(Icons.table_chart_outlined),
+              label: const Text('Impor'),
+            ),
+          ),
+          const SizedBox(width: ZeSpace.xs),
+          FilledButton.icon(
+            onPressed: () => _openEditor(),
+            icon: const Icon(Icons.add),
+            label: const Text('Tambah'),
+          ),
+        ],
       ),
       child: _isLoading
           ? const ProductsLoadingState()

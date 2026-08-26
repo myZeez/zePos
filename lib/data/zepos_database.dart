@@ -846,6 +846,78 @@ class ZePosDatabase {
     });
   }
 
+  /// Inserts a batch of products in one transaction.
+  ///
+  /// Either the whole batch lands or none of it does: a partial import would
+  /// leave the operator guessing which rows to retype. Rows whose SKU or
+  /// barcode already exists are skipped rather than overwritten, so a repeated
+  /// import cannot silently reset prices or stock on live products.
+  Future<ProductImportOutcome> importProducts(List<Product> products) async {
+    if (products.isEmpty) {
+      return const ProductImportOutcome(imported: 0, skipped: []);
+    }
+    return _database.transaction((transaction) async {
+      final existing = await transaction.query(
+        'products',
+        columns: ['sku', 'barcode'],
+      );
+      final takenSkus = {
+        for (final row in existing) (row['sku']! as String).toLowerCase(),
+      };
+      final takenBarcodes = {
+        for (final row in existing) row['barcode']! as String,
+      };
+
+      final skipped = <ProductImportSkip>[];
+      var imported = 0;
+      var sequence = 0;
+      for (final product in products) {
+        if (takenSkus.contains(product.sku.toLowerCase())) {
+          skipped.add(
+            ProductImportSkip(
+              sku: product.sku,
+              reason: 'Kode Produk sudah terdaftar',
+            ),
+          );
+          continue;
+        }
+        if (takenBarcodes.contains(product.barcode)) {
+          skipped.add(
+            ProductImportSkip(
+              sku: product.sku,
+              reason: 'Barcode sudah dipakai produk lain',
+            ),
+          );
+          continue;
+        }
+
+        final createdAt = DateTime.now().millisecondsSinceEpoch;
+        // The clock can repeat inside one batch, so the counter keeps ids
+        // distinct without depending on timer resolution.
+        final id = 'product_import_${createdAt}_${sequence++}';
+        await transaction.insert('products', {
+          ...product.toDatabase(),
+          'id': id,
+          'created_at': createdAt,
+        });
+        if (product.stock > 0) {
+          await transaction.insert('inventory_movements', {
+            'id': 'movement_import_${createdAt}_$sequence',
+            'product_id': id,
+            'quantity_delta': product.stock,
+            'reason': 'INITIAL_STOCK',
+            'reference_id': id,
+            'created_at': createdAt,
+          });
+        }
+        takenSkus.add(product.sku.toLowerCase());
+        takenBarcodes.add(product.barcode);
+        imported++;
+      }
+      return ProductImportOutcome(imported: imported, skipped: skipped);
+    });
+  }
+
   Future<void> setProductActive({
     required String productId,
     required bool isActive,
@@ -1686,3 +1758,21 @@ const _seedProductsList = <Product>[
     isActive: true,
   ),
 ];
+
+/// A product the import left untouched, with the reason shown to the user.
+class ProductImportSkip {
+  const ProductImportSkip({required this.sku, required this.reason});
+
+  final String sku;
+  final String reason;
+}
+
+/// Result of a bulk product import.
+class ProductImportOutcome {
+  const ProductImportOutcome({required this.imported, required this.skipped});
+
+  final int imported;
+  final List<ProductImportSkip> skipped;
+
+  int get skippedCount => skipped.length;
+}

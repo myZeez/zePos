@@ -13,7 +13,7 @@ class ZePosDatabase {
   ZePosDatabase._(this._database, this._databasePath);
 
   static const _databaseName = 'zepos.db';
-  static const _version = 9;
+  static const _version = 10;
 
   final Database _database;
   final String _databasePath;
@@ -272,6 +272,14 @@ class ZePosDatabase {
     if (oldVersion < 9) {
       await _createPrintingSchema(database);
     }
+    if (oldVersion < 10) {
+      // Existing installs already have print_policies, so the pin column has
+      // to be added to the live table rather than created with it.
+      await database.execute(
+        'ALTER TABLE print_policies '
+        'ADD COLUMN cash_drawer_pin INTEGER NOT NULL DEFAULT 2',
+      );
+    }
   }
 
   static Future<void> _createPrintingSchema(DatabaseExecutor database) async {
@@ -312,6 +320,7 @@ class ZePosDatabase {
         fallback_to_dialog INTEGER NOT NULL DEFAULT 1,
         use_printer_settings INTEGER NOT NULL DEFAULT 0,
         open_cash_drawer INTEGER NOT NULL DEFAULT 0,
+        cash_drawer_pin INTEGER NOT NULL DEFAULT 2,
         media_preset_id TEXT NOT NULL,
         profile_id TEXT NOT NULL,
         updated_at INTEGER NOT NULL

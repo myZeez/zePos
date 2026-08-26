@@ -38,6 +38,7 @@ dependencies:
   path: ^1.9.1
   sqflite_common_ffi: ^2.4.0+3
   crypto: ^3.0.6
+  ffi: ^2.1.4
   barcode: ^2.2.9
   excel: ^4.0.6
   file_selector: ^1.0.3

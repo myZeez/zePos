@@ -11,6 +11,8 @@ import 'package:image/image.dart' as image;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:zepos/core/printing/barcode_raster.dart';
+import 'package:zepos/core/printing/cash_drawer_service.dart';
 import 'package:zepos/core/printing/label_print_validator.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/core/printing/universal_print_service.dart';
@@ -57,6 +59,7 @@ class DocumentExportService {
       profile: profile,
       media: configuration.media,
       copies: useSerialJobs ? 1 : copies,
+      dpi: configuration.profile.dpi,
     );
     return UniversalPrintService.dispatchPdf(
       bytes: document,
@@ -205,12 +208,20 @@ class DocumentExportService {
     StoreProfile? profile,
     MediaPreset media = BuiltInPrinterProfiles.label62x38,
     int copies = 1,
+    int dpi = defaultPrintHeadDpi,
   }) async {
     final document = pw.Document();
     final pageFormat = PdfPageFormat(
       media.widthMm * media.columns * PdfPageFormat.mm,
       (media.pitchHeightMm ?? media.heightMm ?? 38) * PdfPageFormat.mm,
       marginAll: 0,
+    );
+    // Rasterized once and reused: every copy prints the same symbol, and PNG
+    // encoding per label would grow linearly with the batch size.
+    final symbol = _rasterizeProductBarcode(
+      product: product,
+      media: media,
+      dpi: dpi,
     );
     final safeCopies = copies.clamp(1, 500);
     final pageCount = (safeCopies / media.columns).ceil();
@@ -231,6 +242,7 @@ class DocumentExportService {
                             product: product,
                             profile: profile,
                             media: media,
+                            symbol: symbol,
                           ),
                         )
                       : pw.SizedBox(),
@@ -385,10 +397,46 @@ class DocumentExportService {
     );
   }
 
+  /// Draws the product barcode at one bitmap pixel per printer dot.
+  ///
+  /// Returns null when the code is empty or the symbology rejects it, in which
+  /// case the label falls back to printing the digits alone. A wrong-looking
+  /// label is recoverable; a label carrying an unreadable symbol is not.
+  static _LabelSymbol? _rasterizeProductBarcode({
+    required Product product,
+    required MediaPreset media,
+    required int dpi,
+  }) {
+    final value = product.barcode.trim();
+    if (value.isEmpty) return null;
+    final availableWidthMm = media.widthMm - media.safeMarginMm * 2;
+    if (availableWidthMm <= 0) return null;
+    final labelHeightMm = media.heightMm ?? 38;
+    final compact = media.widthMm <= 45 || labelHeightMm <= 22;
+    final heightMm = (labelHeightMm * (compact ? 0.34 : 0.4)).clamp(5.0, 22.0);
+    try {
+      final raster = rasterizeBarcode(
+        barcode.Barcode.code128(),
+        value,
+        availableWidthMm: availableWidthMm,
+        heightMm: heightMm,
+        mediaWidthMm: media.widthMm,
+        dpi: dpi,
+      );
+      return _LabelSymbol(
+        raster: raster,
+        png: pw.MemoryImage(Uint8List.fromList(image.encodePng(raster.image))),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   static pw.Widget _productLabelContent({
     required Product product,
     required StoreProfile? profile,
     required MediaPreset media,
+    _LabelSymbol? symbol,
   }) {
     final compact = media.widthMm <= 45 || (media.heightMm ?? 38) <= 22;
     final content = pw.Padding(
@@ -416,13 +464,19 @@ class DocumentExportService {
             ),
           ),
           pw.SizedBox(height: compact ? 2 : 4),
-          pw.Expanded(
-            child: pw.BarcodeWidget(
-              barcode: barcode.Barcode.code128(),
-              data: product.barcode,
-              drawText: false,
-            ),
-          ),
+          if (symbol != null)
+            // Drawn at exactly the size the rasterizer reports. Any other size
+            // hands the printer back the rescaling this avoids, which is what
+            // makes modules uneven and laser scans fail.
+            pw.Center(
+              child: pw.SizedBox(
+                width: symbol.raster.widthMm * PdfPageFormat.mm,
+                height: symbol.raster.heightMm * PdfPageFormat.mm,
+                child: pw.Image(symbol.png, fit: pw.BoxFit.fill),
+              ),
+            )
+          else
+            pw.Expanded(child: pw.SizedBox()),
           pw.SizedBox(height: 2),
           pw.Text(
             product.barcode,
@@ -478,7 +532,7 @@ class DocumentExportService {
       preferences: preferences,
       media: configuration.media,
     );
-    return UniversalPrintService.dispatchPdf(
+    final result = await UniversalPrintService.dispatchPdf(
       bytes: document,
       format: _receiptPageFormat(configuration.media, sale.items.length),
       jobName: 'Nota ${sale.sale.transactionNumber}',
@@ -488,6 +542,19 @@ class DocumentExportService {
       binding: configuration.binding,
       dedupeKey: 'receipt:${sale.sale.id}',
     );
+    if (!configuration.policy.openCashDrawer) return result;
+    // Only kick the drawer once the receipt actually reached the printer:
+    // the drawer hangs off that same printer, so a failed spool means the
+    // pulse has nowhere to go either.
+    if (!result.accepted) return result;
+    final drawer = await CashDrawerService.open(
+      binding: configuration.binding,
+      pin: configuration.policy.cashDrawerPin,
+    );
+    if (drawer.isSuccess) return result;
+    // The sale is recorded and the receipt is printed. Report the drawer
+    // separately rather than turning a completed sale into a failure.
+    return result.withCashDrawerNotice(drawer.userMessage);
   }
 
   static Future<Uint8List> buildReceiptPdf({
@@ -855,4 +922,14 @@ class DocumentExportService {
       .replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_')
       .replaceAll(RegExp(r'_+'), '_')
       .replaceAll(RegExp(r'^_|_$'), '');
+}
+
+/// A product barcode already rasterized to printer dots, paired with the PNG
+/// the PDF embeds. Kept together so the drawing code cannot use one without
+/// the exact physical size that belongs to it.
+class _LabelSymbol {
+  const _LabelSymbol({required this.raster, required this.png});
+
+  final RasterizedBarcode raster;
+  final pw.MemoryImage png;
 }

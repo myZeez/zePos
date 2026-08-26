@@ -165,6 +165,7 @@ class PrintPolicy {
     this.fallbackToDialog = true,
     this.usePrinterSettings = false,
     this.openCashDrawer = false,
+    this.cashDrawerPin = 2,
   });
 
   final PrintPurpose purpose;
@@ -173,6 +174,10 @@ class PrintPolicy {
   final bool fallbackToDialog;
   final bool usePrinterSettings;
   final bool openCashDrawer;
+
+  /// Connector pin the drawer solenoid is wired to. Pin 2 covers most
+  /// drawers; a few two-drawer tills put the second one on pin 5.
+  final int cashDrawerPin;
 
   factory PrintPolicy.fromDatabase(Map<String, Object?> values) => PrintPolicy(
     purpose: PrintPurpose.values.byName(values['purpose']! as String),
@@ -183,6 +188,7 @@ class PrintPolicy {
     fallbackToDialog: values['fallback_to_dialog']! as int == 1,
     usePrinterSettings: values['use_printer_settings']! as int == 1,
     openCashDrawer: values['open_cash_drawer']! as int == 1,
+    cashDrawerPin: values['cash_drawer_pin'] as int? ?? 2,
   );
 
   Map<String, Object?> toDatabase() => {
@@ -192,6 +198,7 @@ class PrintPolicy {
     'fallback_to_dialog': fallbackToDialog ? 1 : 0,
     'use_printer_settings': usePrinterSettings ? 1 : 0,
     'open_cash_drawer': openCashDrawer ? 1 : 0,
+    'cash_drawer_pin': cashDrawerPin,
   };
 }
 
@@ -204,6 +211,7 @@ class PrintJobResult {
     this.retrySafe = false,
     this.artifactPath,
     this.correlationId,
+    this.cashDrawerNotice,
   });
 
   final String jobId;
@@ -213,6 +221,24 @@ class PrintJobResult {
   final bool retrySafe;
   final String? artifactPath;
   final String? correlationId;
+
+  /// Set when the receipt printed but the cash drawer did not open. The print
+  /// state stays unchanged: the sale and the receipt both succeeded.
+  final String? cashDrawerNotice;
+
+  /// Carries a drawer problem back to the cashier without downgrading a print
+  /// that actually worked. The notice is folded into [userMessage] so it
+  /// surfaces even where only that string is displayed.
+  PrintJobResult withCashDrawerNotice(String notice) => PrintJobResult(
+    jobId: jobId,
+    state: state,
+    userMessage: '$userMessage $notice',
+    errorCode: errorCode,
+    retrySafe: retrySafe,
+    artifactPath: artifactPath,
+    correlationId: correlationId,
+    cashDrawerNotice: notice,
+  );
 
   bool get accepted => state == PrintJobState.acceptedToSpooler;
 

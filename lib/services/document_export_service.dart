@@ -612,7 +612,10 @@ class DocumentExportService {
               if (activePreferences.showTransactionTime)
                 _receiptRow('Waktu', _formatDateTime(sale.sale.createdAt)),
               if (activePreferences.showPaymentMethod)
-                _receiptRow('Bayar', _paymentLabel(sale.sale.paymentMethod)),
+                _receiptRow(
+                  'Bayar',
+                  paymentMethodLabel(sale.sale.paymentMethod),
+                ),
               pw.Divider(),
               for (final item in sale.items) ...[
                 pw.Text(
@@ -732,7 +735,7 @@ class DocumentExportService {
             data: report.payments
                 .map(
                   (payment) => [
-                    _paymentLabel(payment.method),
+                    paymentMethodLabel(payment.method),
                     _formatRupiah(payment.total),
                   ],
                 )
@@ -870,8 +873,8 @@ class DocumentExportService {
         excel.TextCellValue(sale.transactionNumber),
         excel.TextCellValue(_formatDateTime(sale.createdAt)),
         excel.IntCellValue(sale.itemCount),
-        excel.TextCellValue(_paymentLabel(sale.paymentMethod)),
-        excel.TextCellValue(_saleStatusLabel(sale.status)),
+        excel.TextCellValue(paymentMethodLabel(sale.paymentMethod)),
+        excel.TextCellValue(transactionStatusLabel(sale.status)),
         excel.IntCellValue(sale.total),
       ]);
     }
@@ -898,7 +901,7 @@ class DocumentExportService {
     _headerRow(payments, const ['Metode Pembayaran', 'Total', 'Porsi']);
     for (final payment in report.payments) {
       payments.appendRow([
-        excel.TextCellValue(_paymentLabel(payment.method)),
+        excel.TextCellValue(paymentMethodLabel(payment.method)),
         excel.IntCellValue(payment.total),
         excel.TextCellValue(_share(payment.total, report.salesTotal)),
       ]);
@@ -1076,12 +1079,6 @@ class DocumentExportService {
     return '${(value * 100 / total).toStringAsFixed(1)}%';
   }
 
-  static String _saleStatusLabel(String status) => switch (status) {
-    'COMPLETED' => 'Selesai',
-    'REVERSED' => 'Dibatalkan',
-    _ => status,
-  };
-
   static pw.Widget _receiptRow(
     String label,
     String value, {
@@ -1117,7 +1114,7 @@ class DocumentExportService {
     return 'Rp$buffer';
   }
 
-  static String _paymentLabel(String method) => switch (method) {
+  static String paymentMethodLabel(String method) => switch (method) {
     'CASH' => 'Tunai',
     'QRIS' => 'QRIS',
     'TRANSFER' => 'Transfer',

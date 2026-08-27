@@ -5,6 +5,8 @@ import 'package:zepos/features/inventory/widgets/inventory_catalog.dart';
 import 'package:zepos/features/inventory/widgets/stock_adjustment_sheet.dart';
 import 'package:zepos/features/inventory/widgets/stock_history.dart';
 import 'package:zepos/features/inventory/widgets/stock_overview.dart';
+import 'package:zepos/services/document_export_service.dart';
+import 'package:zepos/ui/zepos_tokens.dart';
 import 'package:zepos/ui/widgets/page_frame.dart';
 
 class StockPage extends StatefulWidget {
@@ -23,6 +25,7 @@ class _StockPageState extends State<StockPage> {
   StockFilter _filter = StockFilter.all;
   Object? _loadingError;
   var _isLoading = true;
+  var _isExportingStock = false;
 
   @override
   void initState() {
@@ -75,6 +78,30 @@ class _StockPageState extends State<StockPage> {
     }).toList();
   }
 
+  Future<void> _exportStock() async {
+    setState(() => _isExportingStock = true);
+    try {
+      final profile = await widget.database.loadStoreProfile();
+      // The whole catalogue, not the filtered view: a stock report the owner
+      // takes to a supplier has to list everything they carry.
+      final saved = await DocumentExportService.saveInventoryExcel(
+        profile: profile,
+        products: _products,
+      );
+      if (!mounted || !saved) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan stok berhasil disimpan.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Laporan stok belum dapat disimpan.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isExportingStock = false);
+    }
+  }
+
   Future<void> _openAdjustment([Product? product]) async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -111,10 +138,29 @@ class _StockPageState extends State<StockPage> {
     return PageFrame(
       title: 'Stok',
       subtitle: 'Pantau persediaan dan catat setiap perubahan stok.',
-      trailing: FilledButton.icon(
-        onPressed: _isLoading || _products.isEmpty ? null : _openAdjustment,
-        icon: const Icon(Icons.tune),
-        label: const Text('Sesuaikan Stok'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          OutlinedButton.icon(
+            onPressed: _isLoading || _products.isEmpty || _isExportingStock
+                ? null
+                : _exportStock,
+            icon: _isExportingStock
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.table_chart_outlined),
+            label: const Text('Export Excel'),
+          ),
+          const SizedBox(width: ZeSpace.xs),
+          FilledButton.icon(
+            onPressed: _isLoading || _products.isEmpty ? null : _openAdjustment,
+            icon: const Icon(Icons.tune),
+            label: const Text('Sesuaikan Stok'),
+          ),
+        ],
       ),
       child: _isLoading
           ? const StockLoadingState()

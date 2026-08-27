@@ -121,15 +121,22 @@ class _ReportsPageState extends State<ReportsPage> {
     }
   }
 
-  Future<void> _exportExcel(SalesReport report) async {
+  Future<void> _exportExcel() async {
     setState(() => _isExportingExcel = true);
     try {
       final profile = await widget.database.loadStoreProfile();
+      // Re-read the period in full: the on-screen report keeps only the
+      // handful of products a dashboard can show, and an export must not
+      // quietly leave the rest out.
+      final data = await widget.database.loadSalesExport(
+        start: _start,
+        end: _end,
+      );
       final saved = await DocumentExportService.saveSalesReportExcel(
         profile: profile,
         start: _start,
         end: _end,
-        report: report,
+        data: data,
       );
       if (!mounted || !saved) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -224,9 +231,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         ),
                       ),
                       OutlinedButton.icon(
-                        onPressed: _isExportingExcel
-                            ? null
-                            : () => _exportExcel(report),
+                        onPressed: _isExportingExcel ? null : _exportExcel,
                         icon: _isExportingExcel
                             ? const SizedBox(
                                 width: 16,

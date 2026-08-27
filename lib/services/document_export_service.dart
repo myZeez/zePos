@@ -11,6 +11,7 @@ import 'package:image/image.dart' as image;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:zepos/core/formatting/formatters.dart';
 import 'package:zepos/core/printing/barcode_raster.dart';
 import 'package:zepos/core/printing/cash_drawer_service.dart';
 import 'package:zepos/core/printing/label_print_validator.dart';
@@ -792,7 +793,7 @@ class DocumentExportService {
     required StoreProfile? profile,
     required DateTime start,
     required DateTime end,
-    required SalesReport report,
+    required SalesExportData data,
   }) async {
     final location = await getSaveLocation(
       suggestedName: 'laporan_${_dateStamp(start)}_${_dateStamp(end)}.xlsx',
@@ -801,70 +802,285 @@ class DocumentExportService {
       ],
     );
     if (location == null) return false;
+    final bytes = buildSalesReportExcel(
+      profile: profile,
+      start: start,
+      end: end,
+      data: data,
+    );
+    await File(location.path).writeAsBytes(bytes, flush: true);
+    return true;
+  }
+
+  /// Builds the period workbook.
+  ///
+  /// Split from saving so the contents can be checked without a file dialog.
+  static Uint8List buildSalesReportExcel({
+    required StoreProfile? profile,
+    required DateTime start,
+    required DateTime end,
+    required SalesExportData data,
+  }) {
     final workbook = excel.Excel.createExcel();
     final defaultSheet = workbook.getDefaultSheet();
-    if (defaultSheet != null) workbook.delete(defaultSheet);
+    final report = data.summary;
+
     final summary = workbook['Ringkasan'];
-    summary.appendRow([
-      excel.TextCellValue(profile?.storeName ?? 'ZePOS'),
-      excel.TextCellValue(''),
-    ]);
+    _titleRow(summary, profile?.storeName ?? 'ZePOS');
     summary.appendRow([
       excel.TextCellValue('Periode'),
       excel.TextCellValue(_formatPeriod(start, end)),
     ]);
-    summary.appendRow([excel.TextCellValue('')]);
     summary.appendRow([
-      excel.TextCellValue('Metrik'),
-      excel.TextCellValue('Nilai'),
+      excel.TextCellValue('Dibuat'),
+      excel.TextCellValue(_formatDateTime(DateTime.now())),
     ]);
-    summary.appendRow([
-      excel.TextCellValue('Omzet'),
-      excel.IntCellValue(report.salesTotal),
-    ]);
-    summary.appendRow([
-      excel.TextCellValue('Laba kotor estimasi'),
-      excel.IntCellValue(report.grossProfit),
-    ]);
-    summary.appendRow([
-      excel.TextCellValue('Total transaksi'),
-      excel.IntCellValue(report.transactionCount),
-    ]);
-    summary.appendRow([
-      excel.TextCellValue('Produk terjual'),
-      excel.IntCellValue(report.itemCount),
-    ]);
-
-    final payments = workbook['Pembayaran'];
-    payments.appendRow([
-      excel.TextCellValue('Metode pembayaran'),
-      excel.TextCellValue('Total'),
-    ]);
-    for (final payment in report.payments) {
-      payments.appendRow([
-        excel.TextCellValue(_paymentLabel(payment.method)),
-        excel.IntCellValue(payment.total),
+    if (profile != null && profile.address.isNotEmpty) {
+      summary.appendRow([
+        excel.TextCellValue('Alamat'),
+        excel.TextCellValue(profile.address),
       ]);
     }
+    summary.appendRow([excel.TextCellValue('')]);
+    _headerRow(summary, const ['Metrik', 'Nilai']);
+    for (final metric in [
+      ('Omzet', report.salesTotal),
+      ('Laba kotor estimasi', report.grossProfit),
+      ('Total transaksi', report.transactionCount),
+      ('Produk terjual', report.itemCount),
+    ]) {
+      summary.appendRow([
+        excel.TextCellValue(metric.$1),
+        excel.IntCellValue(metric.$2),
+      ]);
+    }
+    _widths(summary, const [30.0, 34.0]);
 
-    final products = workbook['Produk terlaris'];
-    products.appendRow([
-      excel.TextCellValue('Produk'),
-      excel.TextCellValue('Unit terjual'),
-      excel.TextCellValue('Penjualan'),
+    final sales = workbook['Transaksi'];
+    _headerRow(sales, const [
+      'No. Transaksi',
+      'Tanggal',
+      'Item',
+      'Metode Bayar',
+      'Status',
+      'Total',
     ]);
-    for (final product in report.products) {
+    for (final sale in data.sales) {
+      sales.appendRow([
+        excel.TextCellValue(sale.transactionNumber),
+        excel.TextCellValue(_formatDateTime(sale.createdAt)),
+        excel.IntCellValue(sale.itemCount),
+        excel.TextCellValue(_paymentLabel(sale.paymentMethod)),
+        excel.TextCellValue(_saleStatusLabel(sale.status)),
+        excel.IntCellValue(sale.total),
+      ]);
+    }
+    _widths(sales, const [22.0, 20.0, 10.0, 18.0, 16.0, 16.0]);
+
+    final products = workbook['Produk Terjual'];
+    _headerRow(products, const [
+      'Produk',
+      'Unit Terjual',
+      'Penjualan',
+      'Laba Kotor',
+    ]);
+    for (final product in data.products) {
       products.appendRow([
         excel.TextCellValue(product.name),
         excel.IntCellValue(product.quantity),
         excel.IntCellValue(product.salesTotal),
+        excel.IntCellValue(product.grossProfit),
       ]);
     }
+    _widths(products, const [36.0, 14.0, 16.0, 16.0]);
+
+    final payments = workbook['Metode Bayar'];
+    _headerRow(payments, const ['Metode Pembayaran', 'Total', 'Porsi']);
+    for (final payment in report.payments) {
+      payments.appendRow([
+        excel.TextCellValue(_paymentLabel(payment.method)),
+        excel.IntCellValue(payment.total),
+        excel.TextCellValue(_share(payment.total, report.salesTotal)),
+      ]);
+    }
+    _widths(payments, const [24.0, 18.0, 12.0]);
+
+    final movements = workbook['Mutasi Stok'];
+    _headerRow(movements, const [
+      'Tanggal',
+      'Produk',
+      'Perubahan',
+      'Alasan',
+      'Referensi',
+    ]);
+    for (final movement in data.movements) {
+      movements.appendRow([
+        excel.TextCellValue(_formatDateTime(movement.createdAt)),
+        excel.TextCellValue(movement.productName),
+        excel.IntCellValue(movement.quantityDelta),
+        excel.TextCellValue(inventoryReasonLabel(movement.reason)),
+        excel.TextCellValue(movement.referenceId ?? ''),
+      ]);
+    }
+    _widths(movements, const [20.0, 32.0, 12.0, 24.0, 24.0]);
+
+    if (defaultSheet != null) workbook.delete(defaultSheet);
+    workbook.setDefaultSheet('Ringkasan');
     final bytes = workbook.encode();
     if (bytes == null) throw StateError('Laporan Excel tidak dapat dibuat.');
+    return Uint8List.fromList(bytes);
+  }
+
+  static Future<bool> saveInventoryExcel({
+    required StoreProfile? profile,
+    required List<Product> products,
+  }) async {
+    final location = await getSaveLocation(
+      suggestedName: 'stok_${_dateStamp(DateTime.now())}.xlsx',
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'Microsoft Excel', extensions: ['xlsx']),
+      ],
+    );
+    if (location == null) return false;
+    final bytes = buildInventoryExcel(profile: profile, products: products);
     await File(location.path).writeAsBytes(bytes, flush: true);
     return true;
   }
+
+  /// Builds the stock snapshot workbook.
+  ///
+  /// Columns match the import template's names so a stock take can be edited
+  /// here and fed back in without renaming anything.
+  static Uint8List buildInventoryExcel({
+    required StoreProfile? profile,
+    required List<Product> products,
+  }) {
+    final workbook = excel.Excel.createExcel();
+    final defaultSheet = workbook.getDefaultSheet();
+
+    final sheet = workbook['Stok Produk'];
+    _titleRow(sheet, profile?.storeName ?? 'ZePOS');
+    sheet.appendRow([
+      excel.TextCellValue('Dibuat'),
+      excel.TextCellValue(_formatDateTime(DateTime.now())),
+    ]);
+    sheet.appendRow([excel.TextCellValue('')]);
+    _headerRow(sheet, const [
+      'Kode Produk',
+      'Nama Produk',
+      'Kategori',
+      'Barcode',
+      'HPP',
+      'Harga Jual',
+      'Stok',
+      'Stok Minimum',
+      'Nilai Stok',
+      'Status',
+    ]);
+    for (final product in products) {
+      sheet.appendRow([
+        excel.TextCellValue(product.sku),
+        excel.TextCellValue(product.name),
+        excel.TextCellValue(product.category),
+        excel.TextCellValue(product.barcode),
+        excel.IntCellValue(product.costPrice),
+        excel.IntCellValue(product.price),
+        excel.IntCellValue(product.stock),
+        excel.IntCellValue(product.minimumStock),
+        excel.IntCellValue(product.costPrice * product.stock),
+        excel.TextCellValue(product.isActive ? 'Aktif' : 'Nonaktif'),
+      ]);
+    }
+    _widths(sheet, const [
+      18.0,
+      34.0,
+      20.0,
+      22.0,
+      14.0,
+      14.0,
+      10.0,
+      14.0,
+      16.0,
+      12.0,
+    ]);
+
+    final attention = workbook['Perlu Perhatian'];
+    _headerRow(attention, const [
+      'Kode Produk',
+      'Nama Produk',
+      'Stok',
+      'Stok Minimum',
+      'Keterangan',
+    ]);
+    // Only the rows an owner has to act on. A full catalogue hides the two
+    // items that are actually about to run out.
+    for (final product in products.where(
+      (product) => product.isActive && product.stock <= product.minimumStock,
+    )) {
+      attention.appendRow([
+        excel.TextCellValue(product.sku),
+        excel.TextCellValue(product.name),
+        excel.IntCellValue(product.stock),
+        excel.IntCellValue(product.minimumStock),
+        excel.TextCellValue(product.stock == 0 ? 'Stok habis' : 'Stok menipis'),
+      ]);
+    }
+    _widths(attention, const [18.0, 34.0, 10.0, 14.0, 18.0]);
+
+    if (defaultSheet != null) workbook.delete(defaultSheet);
+    workbook.setDefaultSheet('Stok Produk');
+    final bytes = workbook.encode();
+    if (bytes == null) throw StateError('Laporan stok tidak dapat dibuat.');
+    return Uint8List.fromList(bytes);
+  }
+
+  static void _titleRow(excel.Sheet sheet, String title) {
+    sheet.appendRow([excel.TextCellValue(title)]);
+    sheet
+        .cell(excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
+        .cellStyle = excel.CellStyle(
+      bold: true,
+      fontSize: 14,
+    );
+  }
+
+  static void _headerRow(excel.Sheet sheet, List<String> headers) {
+    final rowIndex = sheet.maxRows;
+    sheet.appendRow([
+      for (final header in headers) excel.TextCellValue(header),
+    ]);
+    for (var column = 0; column < headers.length; column++) {
+      sheet
+          .cell(
+            excel.CellIndex.indexByColumnRow(
+              columnIndex: column,
+              rowIndex: rowIndex,
+            ),
+          )
+          .cellStyle = excel.CellStyle(
+        backgroundColorHex: excel.ExcelColor.fromHexString('FF2D74BB'),
+        fontColorHex: excel.ExcelColor.white,
+        bold: true,
+      );
+    }
+  }
+
+  static void _widths(excel.Sheet sheet, List<double> widths) {
+    for (final (index, width) in widths.indexed) {
+      sheet.setColumnWidth(index, width);
+    }
+  }
+
+  static String _share(int value, int total) {
+    if (total <= 0) return '0%';
+    return '${(value * 100 / total).toStringAsFixed(1)}%';
+  }
+
+  static String _saleStatusLabel(String status) => switch (status) {
+    'COMPLETED' => 'Selesai',
+    'REVERSED' => 'Dibatalkan',
+    _ => status,
+  };
 
   static pw.Widget _receiptRow(
     String label,

@@ -1060,6 +1060,79 @@ class ZePosDatabase {
     );
   }
 
+  /// Everything a period export needs, with nothing truncated.
+  ///
+  /// [loadSalesReport] caps the product list at the handful a dashboard can
+  /// show. An export is the opposite case: a spreadsheet that silently leaves
+  /// out rows is worse than no spreadsheet, because the figures look complete
+  /// and do not add up.
+  Future<SalesExportData> loadSalesExport({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final startAt = DateTime(start.year, start.month, start.day);
+    final endAt = DateTime(
+      end.year,
+      end.month,
+      end.day,
+    ).add(const Duration(days: 1));
+    final args = [startAt.millisecondsSinceEpoch, endAt.millisecondsSinceEpoch];
+
+    final saleRows = await _database.rawQuery('''
+      SELECT
+        sales.id,
+        sales.transaction_number,
+        sales.created_at,
+        sales.total,
+        sales.payment_method,
+        sales.status,
+        COALESCE(SUM(sale_items.quantity), 0) AS item_count
+      FROM sales
+      LEFT JOIN sale_items ON sale_items.sale_id = sales.id
+      WHERE sales.created_at >= ? AND sales.created_at < ?
+      GROUP BY sales.id
+      ORDER BY sales.created_at ASC
+      ''', args);
+
+    final productRows = await _database.rawQuery('''
+      SELECT
+        sale_items.product_name_snapshot AS product_name,
+        SUM(sale_items.quantity) AS quantity,
+        SUM(sale_items.line_total) AS sales_total,
+        SUM((sale_items.price_snapshot - sale_items.cost_snapshot)
+            * sale_items.quantity) AS gross_profit
+      FROM sale_items
+      INNER JOIN sales ON sales.id = sale_items.sale_id
+      WHERE sales.status = 'COMPLETED'
+        AND sales.created_at >= ? AND sales.created_at < ?
+      GROUP BY sale_items.product_name_snapshot
+      ORDER BY quantity DESC, sales_total DESC
+      ''', args);
+
+    final movementRows = await _database.rawQuery('''
+      SELECT
+        inventory_movements.id,
+        inventory_movements.product_id,
+        products.name AS product_name,
+        inventory_movements.quantity_delta,
+        inventory_movements.reason,
+        inventory_movements.reference_id,
+        inventory_movements.created_at
+      FROM inventory_movements
+      INNER JOIN products ON products.id = inventory_movements.product_id
+      WHERE inventory_movements.created_at >= ?
+        AND inventory_movements.created_at < ?
+      ORDER BY inventory_movements.created_at ASC
+      ''', args);
+
+    return SalesExportData(
+      summary: await loadSalesReport(start: start, end: end),
+      sales: saleRows.map(SaleRecord.fromDatabase).toList(),
+      products: productRows.map(SoldProduct.fromDatabase).toList(),
+      movements: movementRows.map(InventoryMovement.fromDatabase).toList(),
+    );
+  }
+
   Future<SalesReport> loadSalesReport({
     required DateTime start,
     required DateTime end,
@@ -1775,4 +1848,47 @@ class ProductImportOutcome {
   final List<ProductImportSkip> skipped;
 
   int get skippedCount => skipped.length;
+}
+
+/// One product's contribution over an export period.
+///
+/// Unlike [TopSellingProduct] this carries profit as well, and the export
+/// query returns every product rather than a leading few.
+class SoldProduct {
+  const SoldProduct({
+    required this.name,
+    required this.quantity,
+    required this.salesTotal,
+    required this.grossProfit,
+  });
+
+  final String name;
+  final int quantity;
+  final int salesTotal;
+  final int grossProfit;
+
+  factory SoldProduct.fromDatabase(Map<String, Object?> values) => SoldProduct(
+    name: values['product_name']! as String,
+    quantity: (values['quantity']! as num).toInt(),
+    salesTotal: (values['sales_total']! as num).toInt(),
+    grossProfit: ((values['gross_profit'] ?? 0) as num).toInt(),
+  );
+}
+
+/// Complete period data behind the Excel export.
+class SalesExportData {
+  const SalesExportData({
+    required this.summary,
+    required this.sales,
+    required this.products,
+    required this.movements,
+  });
+
+  final SalesReport summary;
+
+  /// Every transaction in the period, cancelled ones included, so the sheet
+  /// reconciles against the till rather than only against revenue.
+  final List<SaleRecord> sales;
+  final List<SoldProduct> products;
+  final List<InventoryMovement> movements;
 }

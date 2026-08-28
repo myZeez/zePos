@@ -1,0 +1,61 @@
+ZePOS - Aplikasi Kasir Lokal dan Offline
+========================================
+
+Copyright (C) 2026 zeez3.o by Budi Aulyansyah Ahmad Trisna
+
+
+LETAK DATA TOKO
+---------------
+
+Seluruh data toko disimpan di:
+
+    %APPDATA%\ZePOS
+
+Isinya basis data zepos.db beserta folder backups. Lokasinya terpisah dari
+folder pemasangan, sehingga memutakhirkan, memindahkan, atau memasang ulang
+ZePOS tidak menyentuh catatan penjualan.
+
+Bila sebelumnya memakai ZePOS versi ZIP, basis data lama dipindahkan otomatis
+ke lokasi ini saat aplikasi pertama kali dijalankan. Berkas asalnya tidak
+dihapus, hanya diganti nama menjadi zepos.db.migrated sebagai cadangan.
+
+
+MENGHAPUS APLIKASI
+------------------
+
+Lewat Settings > Apps > ZePOS > Uninstall, atau pintasan "Uninstall ZePOS"
+di Start Menu.
+
+Saat menghapus, ZePOS akan bertanya apakah data toko ikut dihapus:
+
+  - Pilih No  : aplikasi dihapus, data toko tetap tersimpan. Pilih ini bila
+                ZePOS akan dipasang kembali.
+  - Pilih Yes : aplikasi dan seluruh data toko dihapus permanen, termasuk
+                produk, transaksi, laporan, dan backup. Tidak dapat
+                dibatalkan.
+
+Catatan: bila komputer dipakai beberapa akun Windows, setiap akun memiliki
+datanya sendiri. Uninstall hanya menghapus data milik akun yang menjalankan
+proses uninstall.
+
+
+BACKUP
+------
+
+Lakukan backup berkala lewat menu Pengaturan di dalam aplikasi. Berkas backup
+tersimpan di %APPDATA%\ZePOS\backups dan dapat disalin ke flashdisk atau
+penyimpanan lain.
+
+
+PERANGKAT KASIR
+---------------
+
+  - Printer nota  : gunakan driver Windows printer termal, lalu hubungkan
+                    lewat Pengaturan > Printer.
+  - Laci uang     : tersambung ke port RJ11/RJ12 pada printer nota. Aktifkan
+                    "Buka laci uang" di Pengaturan. Bila laci memakai pin 5,
+                    ubah nomor pin pada pengaturan kebijakan cetak.
+  - Scanner       : scanner USB tipe keyboard wedge dikenali otomatis, baik
+                    yang mengirim Enter maupun tidak. Tidak perlu pengaturan.
+  - Printer label : ukuran label diatur di Pengaturan > Printer. Uji hasil
+                    cetak dengan scanner laser, bukan kamera ponsel.

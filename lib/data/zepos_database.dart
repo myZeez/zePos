@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:zepos/core/printing/printing_models.dart';
+import 'package:zepos/core/storage/app_storage.dart';
 import 'package:zepos/domain/product.dart';
 import 'package:zepos/domain/store_profile.dart';
 
@@ -19,12 +20,21 @@ class ZePosDatabase {
   final String _databasePath;
 
   static Future<ZePosDatabase> open() async {
+    final String databaseDirectory;
     if (_usesFfi) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
+      // Desktop keeps the data in one per-user folder. Left to itself the FFI
+      // backend resolves its path against the working directory, which ties a
+      // shop's whole history to wherever the program was started from.
+      final directory = AppStorage.dataDirectory();
+      await directory.create(recursive: true);
+      await AppStorage.migrateLegacyData(target: directory);
+      databaseDirectory = directory.path;
+    } else {
+      // Android already hands back a private per-app location.
+      databaseDirectory = await getDatabasesPath();
     }
-
-    final databaseDirectory = await getDatabasesPath();
     await Directory(databaseDirectory).create(recursive: true);
     final database = await openDatabase(
       path.join(databaseDirectory, _databaseName),

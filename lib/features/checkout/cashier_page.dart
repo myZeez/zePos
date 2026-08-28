@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:zepos/core/formatting/formatters.dart';
 import 'package:zepos/core/hardware/barcode_scan_detector.dart';
+import 'package:zepos/core/hardware/camera_scanner.dart';
 import 'package:zepos/core/printing/label_print_validator.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/data/zepos_database.dart';
@@ -75,11 +76,31 @@ class _CashierPageState extends State<CashierPage> {
 
   void _onScan() {
     final code = widget.scans?.value?.code;
-    if (code == null || code.isEmpty || !mounted) return;
-    // The scan drives the search box so the cashier sees the same thing they
-    // would after typing the code, and can correct it if the read was wrong.
+    if (code == null || code.isEmpty) return;
+    _applyScannedCode(code);
+  }
+
+  /// Handles a code however it was read: USB scanner or camera.
+  ///
+  /// The scan drives the search box so the cashier sees the same thing they
+  /// would after typing the code, and can correct it if the read was wrong.
+  void _applyScannedCode(String code) {
+    if (!mounted) return;
     _searchController.text = code;
     setState(() => _query = code);
+  }
+
+  Future<void> _scanWithCamera() async {
+    final code = await CameraScanner.scan(context);
+    if (code == null || code.isEmpty || !mounted) return;
+    _applyScannedCode(code);
+    // A code the shop does not stock reads fine but matches nothing, and a
+    // silently empty product list looks like the scan itself failed.
+    if (_visibleProducts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Barcode $code tidak ada di katalog.')),
+      );
+    }
   }
 
   Future<void> _loadProducts() async {
@@ -325,6 +346,7 @@ class _CashierPageState extends State<CashierPage> {
           onSearchChanged: (value) => setState(() => _query = value),
           onCategoryChanged: (value) => setState(() => _category = value),
           onAdd: (product) => _changeQuantity(product, 1),
+          onScanWithCamera: CameraScanner.isSupported ? _scanWithCamera : null,
         );
 
         return PageFrame(

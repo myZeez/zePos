@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:zepos/core/formatting/formatters.dart';
+import 'package:zepos/core/hardware/camera_scanner.dart';
 import 'package:zepos/data/zepos_database.dart';
 import 'package:zepos/domain/product.dart';
 import 'package:zepos/ui/widgets/form_field_group.dart';
@@ -73,6 +74,12 @@ class _ProductEditorSheetState extends State<ProductEditorSheet> {
 
   void _generateBarcode() {
     setState(() => _barcodeController.text = generateProductBarcode());
+  }
+
+  Future<void> _scanBarcode() async {
+    final code = await CameraScanner.scan(context);
+    if (code == null || code.isEmpty || !mounted) return;
+    setState(() => _barcodeController.text = code);
   }
 
   String? _requiredValidator(String? value, String field) {
@@ -206,8 +213,20 @@ class _ProductEditorSheetState extends State<ProductEditorSheet> {
                             keyboardType: TextInputType.number,
                             validator: (value) =>
                                 _requiredValidator(value, 'Barcode'),
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               hintText: 'Barcode otomatis',
+                              // Scanning the packaging keeps the shop's code
+                              // identical to the maker's, so an item already
+                              // carrying a barcode needs no new label.
+                              suffixIcon: CameraScanner.isSupported
+                                  ? IconButton(
+                                      onPressed: _isSaving
+                                          ? null
+                                          : _scanBarcode,
+                                      tooltip: 'Pindai barcode kemasan',
+                                      icon: const Icon(Icons.qr_code_scanner),
+                                    )
+                                  : null,
                             ),
                           ),
                         );

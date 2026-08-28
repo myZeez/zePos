@@ -15,6 +15,7 @@ class ProductBrowser extends StatelessWidget {
     required this.onSearchChanged,
     required this.onCategoryChanged,
     required this.onAdd,
+    this.onScanWithCamera,
   });
 
   final List<Product> allProducts;
@@ -26,6 +27,9 @@ class ProductBrowser extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<String> onCategoryChanged;
   final ValueChanged<Product> onAdd;
+
+  /// Opens the camera scanner. Null on devices without a usable camera.
+  final VoidCallback? onScanWithCamera;
 
   @override
   Widget build(BuildContext context) {
@@ -41,9 +45,18 @@ class ProductBrowser extends StatelessWidget {
             controller: searchController,
             onChanged: onSearchChanged,
             textInputAction: TextInputAction.search,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Cari nama, SKU, atau scan barcode',
-              prefixIcon: Icon(Icons.search),
+              prefixIcon: const Icon(Icons.search),
+              // Only where there is a camera to open. A till with a USB
+              // scanner has no use for the button and should not carry it.
+              suffixIcon: onScanWithCamera == null
+                  ? null
+                  : IconButton(
+                      onPressed: onScanWithCamera,
+                      tooltip: 'Pindai dengan kamera',
+                      icon: const Icon(Icons.qr_code_scanner),
+                    ),
             ),
           ),
           const SizedBox(height: 14),

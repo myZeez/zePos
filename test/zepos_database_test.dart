@@ -6,7 +6,8 @@ import 'package:zepos/core/printing/universal_print_service.dart';
 import 'package:zepos/data/zepos_database.dart';
 import 'package:zepos/domain/product.dart';
 import 'package:zepos/domain/store_profile.dart';
-import 'package:zepos/core/formatting/formatters.dart' show generateProductBarcode;
+import 'package:zepos/core/formatting/formatters.dart'
+    show generateProductBarcode;
 import 'package:zepos/services/document_export_service.dart';
 
 void main() {

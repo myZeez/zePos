@@ -164,6 +164,12 @@ class _CashierPageState extends State<CashierPage> {
     });
   }
 
+  /// Shows the cart as a sheet, which is how narrow screens reach it.
+  ///
+  /// The sheet is a route of its own, so setState on this page does not rebuild
+  /// it. Without a builder of its own the contents would freeze at whatever the
+  /// cart held when the sheet opened: quantity changes would not show, and
+  /// after a sale the sheet would stay up still listing the items just sold.
   Future<void> _openCart() async {
     if (_cart.isEmpty) return;
     await showModalBottomSheet<void>(
@@ -171,21 +177,35 @@ class _CashierPageState extends State<CashierPage> {
       isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: const Color(0xFFEEF2F7),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: FractionallySizedBox(
           heightFactor: 0.88,
-          child: CartPanel(
-            cart: _cart,
-            onChangeQuantity: _changeQuantity,
-            onCheckout: _openPayment,
-            scrollable: true,
+          child: StatefulBuilder(
+            builder: (context, refreshSheet) => CartPanel(
+              cart: _cart,
+              onChangeQuantity: (product, change) {
+                _changeQuantity(product, change);
+                refreshSheet(() {});
+              },
+              onCheckout: () => _openPayment(
+                // Closing the sheet is the sheet's own job: the page cannot
+                // know whether the cart is a sheet here or a side panel.
+                onCommitted: () => Navigator.of(sheetContext).pop(),
+              ),
+              scrollable: true,
+            ),
           ),
         ),
       ),
     );
   }
 
-  Future<void> _openPayment() async {
+  /// Takes payment and records the sale.
+  ///
+  /// [onCommitted] runs once the sale is stored and the cart emptied, before
+  /// the receipt dialog appears, so a cart sheet can dismiss itself while the
+  /// screen is still showing the payment result rather than after it.
+  Future<void> _openPayment({VoidCallback? onCommitted}) async {
     if (_cart.isEmpty || _isSavingSale) return;
     final totalBeforePayment = _total;
     final paid = await showModalBottomSheet<PaymentResult>(
@@ -242,6 +262,9 @@ class _CashierPageState extends State<CashierPage> {
       _cart.clear();
       _isSavingSale = false;
     });
+    // The sale is stored and the cart is empty, so anything still showing the
+    // old cart has to go before the cashier is told the payment went through.
+    onCommitted?.call();
     await _loadProducts();
     widget.onSaleCompleted();
     if (!mounted) return;

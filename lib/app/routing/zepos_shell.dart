@@ -5,6 +5,7 @@ import 'package:zepos/app/routing/back_action.dart';
 import 'package:zepos/app/routing/widgets/app_navigation.dart';
 import 'package:zepos/core/hardware/barcode_scan_detector.dart';
 import 'package:zepos/core/hardware/barcode_scan_listener.dart';
+import 'package:zepos/core/hardware/screen_wakelock.dart';
 import 'package:zepos/data/zepos_database.dart';
 import 'package:zepos/features/checkout/cashier_page.dart';
 import 'package:zepos/features/dashboard/dashboard_page.dart';
@@ -49,9 +50,14 @@ class _ZePosShellState extends State<ZePosShell> {
   final ValueNotifier<int> _cartItems = ValueNotifier(0);
   late final BarcodeScanListener _scanListener;
 
+  /// Held only while the till is on screen, never while ZePOS sits in the
+  /// background.
+  final ScreenWakelock _wakelock = ScreenWakelock();
+
   @override
   void initState() {
     super.initState();
+    _wakelock.start();
     _scanListener = BarcodeScanListener(
       onScan: _handleScan,
       // A dialog or bottom sheet on top owns the keyboard. Jumping to the
@@ -63,6 +69,7 @@ class _ZePosShellState extends State<ZePosShell> {
 
   @override
   void dispose() {
+    _wakelock.stop();
     _scanListener.stop();
     _lastScan.dispose();
     _cartItems.dispose();

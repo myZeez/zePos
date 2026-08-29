@@ -199,11 +199,14 @@ class _ProductEditorSheetState extends State<ProductEditorSheet> {
                           action: TextButton.icon(
                             onPressed: _isSaving ? null : _generateBarcode,
                             style: TextButton.styleFrom(
-                              minimumSize: const Size(0, 32),
+                              // 44 is the smallest target PRODUCT.md allows.
+                              // The label row keeps its height because the
+                              // text field beside it is taller anyway, so the
+                              // bigger target costs no layout.
+                              minimumSize: const Size(44, 44),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: ZeSpace.xs,
                               ),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                             icon: const Icon(Icons.autorenew, size: 16),
                             label: const Text('Buat baru'),

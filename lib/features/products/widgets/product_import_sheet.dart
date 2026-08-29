@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:zepos/core/export/file_delivery.dart';
 import 'package:zepos/core/import/product_excel_import_service.dart';
 import 'package:zepos/data/zepos_database.dart';
 import 'package:zepos/ui/zepos_tokens.dart';
@@ -17,18 +16,22 @@ abstract final class ProductImportFlow {
   static Future<void> downloadTemplate(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final location = await getSaveLocation(
-        suggestedName: 'template_impor_produk.xlsx',
-        acceptedTypeGroups: const [
-          XTypeGroup(label: 'Microsoft Excel', extensions: ['xlsx']),
-        ],
+      final outcome = await FileDelivery.deliverBytes(
+        bytes: ProductExcelImportService.buildTemplate(),
+        fileName: 'template_impor_produk.xlsx',
+        typeLabel: 'Microsoft Excel',
+        extensions: const ['xlsx'],
+        subject: 'Template impor produk ZePOS',
       );
-      if (location == null) return;
-      await File(
-        location.path,
-      ).writeAsBytes(ProductExcelImportService.buildTemplate());
+      if (outcome == DeliveryOutcome.cancelled) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('Template impor produk tersimpan.')),
+        SnackBar(
+          content: Text(
+            outcome == DeliveryOutcome.shared
+                ? 'Template impor produk siap dibagikan.'
+                : 'Template impor produk tersimpan.',
+          ),
+        ),
       );
     } catch (_) {
       messenger.showSnackBar(

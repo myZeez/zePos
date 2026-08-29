@@ -10,11 +10,19 @@ class BackupRow extends StatelessWidget {
     required this.backup,
     required this.restoring,
     required this.onRestore,
+    this.onSaveCopy,
   });
 
   final BackupRecord backup;
   final bool restoring;
   final ValueChanged<BackupRecord> onRestore;
+
+  /// Sends a copy of the backup out of the app.
+  ///
+  /// A backup that only exists inside the app is no safety net: it goes with
+  /// the app when it is uninstalled, and on Android it sits in private storage
+  /// the shop owner cannot even reach to copy onto a flash drive.
+  final ValueChanged<BackupRecord>? onSaveCopy;
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +59,12 @@ class BackupRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
+        if (onSaveCopy != null)
+          IconButton(
+            onPressed: restoring ? null : () => onSaveCopy!(backup),
+            tooltip: 'Simpan salinan ke luar aplikasi',
+            icon: const Icon(Icons.save_alt_outlined),
+          ),
         OutlinedButton.icon(
           onPressed: restoring ? null : () => onRestore(backup),
           icon: restoring

@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:zepos/core/export/file_delivery.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/data/zepos_database.dart';
 import 'package:zepos/domain/store_profile.dart';
@@ -290,6 +293,38 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// Sends a copy of a backup somewhere the app cannot reach.
+  ///
+  /// The backups ZePOS keeps live beside its database, which on Android is
+  /// private storage: the owner cannot open it, and uninstalling the app takes
+  /// every backup with it. A copy the owner holds themselves is the only one
+  /// that survives losing the device.
+  Future<void> _saveBackupCopy(BackupRecord backup) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final outcome = await FileDelivery.deliverFile(
+        source: File(backup.path),
+        typeLabel: 'Backup ZePOS',
+        extensions: const ['db'],
+        subject: 'Backup ZePOS ${backup.name}',
+      );
+      if (outcome == DeliveryOutcome.cancelled) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            outcome == DeliveryOutcome.shared
+                ? 'Salinan backup siap dibagikan. Simpan di luar perangkat ini.'
+                : 'Salinan backup tersimpan.',
+          ),
+        ),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Salinan backup gagal dibuat.')),
+      );
+    }
+  }
+
   Future<void> _restoreBackup(BackupRecord backup) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -410,6 +445,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     backup: _backups[index],
                     restoring: _restoringPath == _backups[index].path,
                     onRestore: _restoreBackup,
+                    onSaveCopy: _saveBackupCopy,
                   ),
                   if (index < _backups.length - 1) const Divider(height: 18),
                 ],

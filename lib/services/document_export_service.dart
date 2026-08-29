@@ -1,16 +1,15 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:barcode/barcode.dart' as barcode;
 import 'package:crypto/crypto.dart';
 import 'package:excel/excel.dart' as excel;
-import 'package:file_selector/file_selector.dart';
 import 'package:image/image.dart' as image;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:zepos/core/export/file_delivery.dart';
 import 'package:zepos/core/formatting/formatters.dart';
 import 'package:zepos/core/printing/barcode_raster.dart';
 import 'package:zepos/core/printing/cash_drawer_service.dart';
@@ -183,13 +182,6 @@ class DocumentExportService {
     StoreProfile? profile,
     MediaPreset media = BuiltInPrinterProfiles.label62x38,
   }) async {
-    final location = await getSaveLocation(
-      suggestedName: 'label_${_safeFileName(product.name)}.jpg',
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'Gambar JPEG', extensions: ['jpg', 'jpeg']),
-      ],
-    );
-    if (location == null) return false;
     final document = await buildProductLabelPdf(
       product: product,
       profile: profile,
@@ -199,9 +191,14 @@ class DocumentExportService {
     final png = await raster.toPng();
     final decoded = image.decodePng(png);
     if (decoded == null) throw StateError('Label tidak dapat dikonversi.');
-    final jpg = image.encodeJpg(decoded, quality: 96);
-    await File(location.path).writeAsBytes(jpg, flush: true);
-    return true;
+    final outcome = await FileDelivery.deliverBytes(
+      bytes: Uint8List.fromList(image.encodeJpg(decoded, quality: 96)),
+      fileName: 'label_${_safeFileName(product.name)}.jpg',
+      typeLabel: 'Gambar JPEG',
+      extensions: const ['jpg', 'jpeg'],
+      subject: 'Label ${product.name}',
+    );
+    return outcome.isDelivered;
   }
 
   static Future<Uint8List> buildProductLabelPdf({
@@ -678,21 +675,20 @@ class DocumentExportService {
     required DateTime end,
     required SalesReport report,
   }) async {
-    final location = await getSaveLocation(
-      suggestedName: 'laporan_${_dateStamp(start)}_${_dateStamp(end)}.pdf',
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'Dokumen PDF', extensions: ['pdf']),
-      ],
-    );
-    if (location == null) return false;
     final bytes = await buildSalesReportPdf(
       profile: profile,
       start: start,
       end: end,
       report: report,
     );
-    await File(location.path).writeAsBytes(bytes, flush: true);
-    return true;
+    final outcome = await FileDelivery.deliverBytes(
+      bytes: bytes,
+      fileName: 'laporan_${_dateStamp(start)}_${_dateStamp(end)}.pdf',
+      typeLabel: 'Dokumen PDF',
+      extensions: const ['pdf'],
+      subject: 'Laporan ${_formatPeriod(start, end)}',
+    );
+    return outcome.isDelivered;
   }
 
   static Future<Uint8List> buildSalesReportPdf({
@@ -798,21 +794,19 @@ class DocumentExportService {
     required DateTime end,
     required SalesExportData data,
   }) async {
-    final location = await getSaveLocation(
-      suggestedName: 'laporan_${_dateStamp(start)}_${_dateStamp(end)}.xlsx',
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'Microsoft Excel', extensions: ['xlsx']),
-      ],
+    final outcome = await FileDelivery.deliverBytes(
+      bytes: buildSalesReportExcel(
+        profile: profile,
+        start: start,
+        end: end,
+        data: data,
+      ),
+      fileName: 'laporan_${_dateStamp(start)}_${_dateStamp(end)}.xlsx',
+      typeLabel: 'Microsoft Excel',
+      extensions: const ['xlsx'],
+      subject: 'Laporan ${_formatPeriod(start, end)}',
     );
-    if (location == null) return false;
-    final bytes = buildSalesReportExcel(
-      profile: profile,
-      start: start,
-      end: end,
-      data: data,
-    );
-    await File(location.path).writeAsBytes(bytes, flush: true);
-    return true;
+    return outcome.isDelivered;
   }
 
   /// Builds the period workbook.
@@ -938,16 +932,14 @@ class DocumentExportService {
     required StoreProfile? profile,
     required List<Product> products,
   }) async {
-    final location = await getSaveLocation(
-      suggestedName: 'stok_${_dateStamp(DateTime.now())}.xlsx',
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'Microsoft Excel', extensions: ['xlsx']),
-      ],
+    final outcome = await FileDelivery.deliverBytes(
+      bytes: buildInventoryExcel(profile: profile, products: products),
+      fileName: 'stok_${_dateStamp(DateTime.now())}.xlsx',
+      typeLabel: 'Microsoft Excel',
+      extensions: const ['xlsx'],
+      subject: 'Laporan stok ${profile?.storeName ?? 'ZePOS'}',
     );
-    if (location == null) return false;
-    final bytes = buildInventoryExcel(profile: profile, products: products);
-    await File(location.path).writeAsBytes(bytes, flush: true);
-    return true;
+    return outcome.isDelivered;
   }
 
   /// Builds the stock snapshot workbook.

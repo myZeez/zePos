@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:zepos/core/printing/bluetooth_printer_service.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/core/printing/raw_printer_service.dart';
 
@@ -20,7 +20,8 @@ enum CashDrawerOutcome {
     CashDrawerOutcome.notConfigured =>
       'Laci uang belum terhubung. Pilih printer nota di Pengaturan.',
     CashDrawerOutcome.unsupportedPlatform =>
-      'Buka laci otomatis baru tersedia di Windows. Gunakan kunci manual.',
+      'Perangkat ini tidak dapat membuka laci otomatis. Di Android laci harus '
+          'tersambung ke printer nota Bluetooth. Gunakan kunci manual.',
     CashDrawerOutcome.failed =>
       'Laci uang tidak merespons. Buka dengan kunci manual.',
   };
@@ -42,25 +43,38 @@ abstract final class CashDrawerService {
 
   /// Whether this build can kick a drawer at all.
   ///
-  /// Android reaches its drawer over Bluetooth rather than a Windows spool
-  /// queue, so that path is reported as unsupported until the Bluetooth
-  /// adapter is wired in here.
-  static bool get isSupported => RawPrinterService.isSupported;
+  /// Windows sends the pulse through the printer's spool queue; Android sends
+  /// it over the same Bluetooth link it prints receipts on.
+  static bool get isSupported =>
+      RawPrinterService.isSupported || BluetoothPrinterService.isSupported;
 
   static Future<CashDrawerOutcome> open({
     required PrinterBinding? binding,
     int pin = 2,
   }) async {
-    final printerName = binding?.printerName.trim() ?? '';
-    if (binding == null || !binding.isEnabled || printerName.isEmpty) {
+    if (binding == null || !binding.isEnabled) {
       return CashDrawerOutcome.notConfigured;
     }
-    if (!isSupported) {
-      return Platform.isWindows
-          ? CashDrawerOutcome.failed
-          : CashDrawerOutcome.unsupportedPlatform;
-    }
     try {
+      // The drawer hangs off whichever printer the receipt goes to, so the
+      // pulse follows the same connection rather than a separate one.
+      if (BluetoothPrinterService.isBluetoothUrl(binding.printerUrl)) {
+        if (!BluetoothPrinterService.isSupported) {
+          return CashDrawerOutcome.unsupportedPlatform;
+        }
+        final sent = await BluetoothPrinterService.writeRaw(
+          printerUrl: binding.printerUrl,
+          bytes: commandForPin(pin),
+          jobName: 'ZePOS - buka laci uang',
+        );
+        return sent ? CashDrawerOutcome.opened : CashDrawerOutcome.failed;
+      }
+
+      final printerName = binding.printerName.trim();
+      if (printerName.isEmpty) return CashDrawerOutcome.notConfigured;
+      if (!RawPrinterService.isSupported) {
+        return CashDrawerOutcome.unsupportedPlatform;
+      }
       final sent = RawPrinterService.send(
         printerName: printerName,
         documentName: 'ZePOS - buka laci uang',

@@ -58,6 +58,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -103,3 +104,21 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Ikon peluncur aplikasi.
+#
+# Sumbernya dibuat dari LOGO PNG.png: icon.png memakai latar putih agar logo
+# ungu tidak lenyap di wallpaper terang, sedangkan icon_foreground.png dibuat
+# transparan dan lebih kecil karena peluncur Android memotongnya mengikuti
+# bentuknya sendiri dan hanya dua pertiga bagian dalam yang dijamin terlihat.
+#
+# Bangun ulang dengan: flutter pub run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  min_sdk_android: 24
+  windows:
+    generate: false

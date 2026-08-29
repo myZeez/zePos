@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zepos/core/printing/bluetooth_printer_service.dart';
 import 'package:zepos/core/printing/cash_drawer_service.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 
@@ -16,6 +19,7 @@ PrinterBinding binding({
 );
 
 void main() {
+  bluetoothTests();
   test('pulse laci memakai perintah ESC/POS yang benar per pin', () {
     // ESC p m t1 t2 -- m selects the connector pin, t1/t2 the pulse timing.
     expect(CashDrawerService.commandForPin(2), [0x1b, 0x70, 0x00, 0x19, 0xfa]);
@@ -77,5 +81,60 @@ void main() {
     final legacy = Map<String, Object?>.from(policy.toDatabase())
       ..remove('cash_drawer_pin');
     expect(PrintPolicy.fromDatabase(legacy).cashDrawerPin, 2);
+  });
+}
+
+/// The Bluetooth path added for Android.
+///
+/// The drawer hangs off the receipt printer, so on a phone the kick follows
+/// the same Bluetooth link the receipt goes out on rather than a separate one.
+PrinterBinding bluetoothBinding({bool isEnabled = true}) => PrinterBinding(
+  id: 'b2',
+  purpose: PrintPurpose.receipt,
+  profileId: 'generic_bluetooth_58',
+  printerUrl: 'bluetooth://AA:BB:CC:DD:EE:FF',
+  printerName: 'RPP02N',
+  isEnabled: isEnabled,
+  updatedAt: DateTime(2026, 8, 29),
+);
+
+void bluetoothTests() {
+  test('printer Bluetooth dikenali sebagai jalur laci', () {
+    expect(
+      BluetoothPrinterService.isBluetoothUrl(bluetoothBinding().printerUrl),
+      isTrue,
+    );
+    expect(
+      BluetoothPrinterService.isBluetoothUrl(binding().printerUrl),
+      isFalse,
+      reason: 'printer Windows memakai antrean spool, bukan Bluetooth',
+    );
+  });
+
+  test(
+    'laci Bluetooth yang dinonaktifkan tetap dilaporkan belum siap',
+    () async {
+      expect(
+        await CashDrawerService.open(
+          binding: bluetoothBinding(isEnabled: false),
+        ),
+        CashDrawerOutcome.notConfigured,
+      );
+    },
+  );
+
+  test('dukungan laci mengikuti platform yang tersedia', () {
+    // Windows mengirim lewat antrean printer, Android lewat Bluetooth.
+    expect(
+      CashDrawerService.isSupported,
+      Platform.isWindows || Platform.isAndroid,
+    );
+  });
+
+  test('pesan platform tak didukung menyebut syarat Android', () {
+    // Pesan lama hanya menyebut Windows, padahal Android kini didukung.
+    final message = CashDrawerOutcome.unsupportedPlatform.userMessage;
+    expect(message, contains('Android'));
+    expect(message, contains('kunci manual'));
   });
 }

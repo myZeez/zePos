@@ -17,6 +17,32 @@ class BluetoothPrinterService {
   static bool isBluetoothUrl(String? url) =>
       url != null && url.startsWith(_scheme);
 
+  /// Sends bytes to a paired printer exactly as given.
+  ///
+  /// Used for control codes rather than documents: a cash-drawer kick is a
+  /// handful of ESC/POS bytes the printer acts on, not something to render.
+  ///
+  /// Returns false rather than throwing. The callers here are side errands
+  /// beside a sale that has already been recorded, and none of them should be
+  /// able to turn a completed transaction into an error.
+  static Future<bool> writeRaw({
+    required String printerUrl,
+    required List<int> bytes,
+    required String jobName,
+  }) async {
+    if (!isSupported || !isBluetoothUrl(printerUrl)) return false;
+    try {
+      await _channel.invokeMethod<void>('write', {
+        'address': printerUrl.substring(_scheme.length),
+        'bytes': Uint8List.fromList(bytes),
+        'jobName': jobName,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<List<Printer>> discoverBondedPrinters() async {
     if (!isSupported) return const [];
     final devices = await _channel.invokeListMethod<Map<Object?, Object?>>(

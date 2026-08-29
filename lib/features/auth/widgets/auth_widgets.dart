@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:zepos/core/constants/build_identity.dart';
 import 'package:zepos/ui/widgets/brand_lockup.dart';
 import 'package:zepos/ui/widgets/form_field_group.dart';
 import 'package:zepos/ui/zepos_tokens.dart';
@@ -49,6 +50,15 @@ class AuthScaffold extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   child,
+                  const SizedBox(height: ZeSpace.md),
+                  // The maker's mark, kept quiet: it belongs on the way in,
+                  // not in the middle of serving a customer.
+                  Center(
+                    child: Text(
+                      BuildIdentity.watermark,
+                      style: ZeText.meta.copyWith(color: ZeColors.subtle),
+                    ),
+                  ),
                 ],
               ),
             ),

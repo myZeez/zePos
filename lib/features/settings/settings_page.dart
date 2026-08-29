@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:zepos/core/constants/build_identity.dart';
 import 'package:zepos/core/export/file_delivery.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/data/zepos_database.dart';
@@ -533,11 +534,15 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: ZeSpace.md),
           resetPanel,
           const SizedBox(height: ZeSpace.lg),
-          const Align(
+          Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              '\u00A9 2026 zeez3.o by Budi Aulyansyah Ahmad Trisna',
-              style: ZeText.meta,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(BuildIdentity.watermark, style: ZeText.label),
+                const SizedBox(height: ZeSpace.xxs),
+                Text(BuildIdentity.copyright, style: ZeText.meta),
+              ],
             ),
           ),
         ],

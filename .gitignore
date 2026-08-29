@@ -46,3 +46,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Paket rilis siap bagikan (berkas besar, dibuat ulang dari build)
+/release/

@@ -89,7 +89,8 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "zeez3.o" "\0"
+            VALUE "CompanyName", "Zeez3.o by 13ud1.aat" "\0"
+            VALUE "Comments", "Zeez3.o by 13ud1.aat" "\0"
             VALUE "FileDescription", "ZePOS" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "ZePOS" "\0"

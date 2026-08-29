@@ -9,7 +9,7 @@
 
 #define AppName "ZePOS"
 #define AppVersion "1.0.0"
-#define AppPublisher "zeez3.o"
+#define AppPublisher "Zeez3.o by 13ud1.aat"
 #define AppExeName "zepos.exe"
 #define SourceDir "..\build\windows\x64\runner\Release"
 

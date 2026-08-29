@@ -8,6 +8,14 @@
         android:label="ZePOS"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!--
+            Penanda pembuat build ini. Android tidak punya kolom penerbit
+            seperti berkas Windows, jadi keterangannya ditaruh di sini dan
+            dapat dibaca dari APK dengan aapt dump badging.
+        -->
+        <meta-data
+            android:name="io.zepos.build.watermark"
+            android:value="Zeez3.o by 13ud1.aat" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

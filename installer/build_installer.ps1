@@ -63,6 +63,26 @@ $output = Get-ChildItem -Path (Join-Path $projectRoot 'dist') -Filter 'ZePOS-Set
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 
+# Sidik jari sebagai pengganti tanda tangan digital.
+#
+# Installer ini tidak ditandatangani secara digital, sehingga Windows
+# SmartScreen menampilkan peringatan "Unknown publisher". Menandatanganinya
+# memerlukan sertifikat berbayar dari otoritas tepercaya; sertifikat yang
+# dibuat sendiri tidak menghilangkan peringatan itu karena SmartScreen menilai
+# reputasi penerbitnya, bukan sekadar ada tidaknya tanda tangan.
+#
+# Nilai SHA-256 di bawah memungkinkan penerima memastikan berkas yang mereka
+# unduh sama persis dengan yang dibuat di sini.
+$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $output.FullName).Hash
+$checksumFile = "$($output.FullName).sha256"
+"$hash *$($output.Name)" | Set-Content -LiteralPath $checksumFile -Encoding ascii
+
 Write-Host ''
 Write-Host 'Installer selesai dibuat:' -ForegroundColor Green
 Write-Host ("  {0}  ({1:N1} MB)" -f $output.FullName, ($output.Length / 1MB))
+Write-Host ("  SHA-256: {0}" -f $hash)
+Write-Host ("  Checksum disimpan di: {0}" -f $checksumFile)
+Write-Host ''
+Write-Host 'Bagikan nilai SHA-256 bersama installer-nya. Penerima dapat memeriksa' -ForegroundColor Yellow
+Write-Host 'keaslian berkas dengan perintah berikut sebelum memasang:' -ForegroundColor Yellow
+Write-Host ("  Get-FileHash -Algorithm SHA256 '{0}'" -f $output.Name)

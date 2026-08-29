@@ -53,6 +53,54 @@ RestartApplications=yes
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+; Inno Setup tidak membawa berkas bahasa Indonesia, jadi kalimat yang benar
+; benar dibaca pemilik toko selama pemasangan ditimpa di sini. Sisanya, yang
+; hanya muncul pada keadaan tak lazim, tetap memakai bawaan.
+[Messages]
+SetupAppTitle=Pemasang
+SetupWindowTitle=Pemasangan %1
+WelcomeLabel1=Selamat datang di pemasangan [name]
+WelcomeLabel2=Program ini akan memasang [name/ver] pada komputer Anda.%n%nTutup aplikasi lain sebelum melanjutkan.
+ClickNext=Klik Lanjut untuk meneruskan, atau Batal untuk keluar.
+WizardSelectDir=Pilih Lokasi Pemasangan
+SelectDirDesc=Di mana [name] akan dipasang?
+SelectDirLabel3=Pemasang akan menaruh [name] pada folder berikut.
+SelectDirBrowseLabel=Klik Lanjut untuk meneruskan. Untuk memilih folder lain, klik Telusuri.
+DiskSpaceGBLabel=Diperlukan ruang kosong minimal [gb] GB.
+DiskSpaceMBLabel=Diperlukan ruang kosong minimal [mb] MB.
+WizardSelectTasks=Pilih Tugas Tambahan
+SelectTasksDesc=Tugas tambahan apa yang perlu dijalankan?
+SelectTasksLabel2=Pilih tugas tambahan yang diinginkan, lalu klik Lanjut.
+WizardReady=Siap Memasang
+ReadyLabel1=Pemasang siap memasang [name] pada komputer Anda.
+ReadyLabel2a=Klik Pasang untuk memulai, atau klik Kembali untuk memeriksa kembali pengaturannya.
+ReadyLabel2b=Klik Pasang untuk memulai pemasangan.
+ReadyMemoDir=Lokasi pemasangan:
+ReadyMemoTasks=Tugas tambahan:
+WizardInstalling=Sedang Memasang
+InstallingLabel=Mohon tunggu, [name] sedang dipasang.
+FinishedHeadingLabel=Pemasangan [name] selesai
+FinishedLabel=[name] sudah terpasang di komputer Anda dan dapat dijalankan melalui pintasan yang tersedia.
+FinishedLabelNoIcons=[name] sudah terpasang di komputer Anda.
+ClickFinish=Klik Selesai untuk menutup pemasang.
+ButtonNext=&Lanjut
+ButtonBack=&Kembali
+ButtonInstall=&Pasang
+ButtonCancel=Batal
+ButtonFinish=&Selesai
+ButtonBrowse=&Telusuri...
+ButtonYes=&Ya
+ButtonNo=&Tidak
+ExitSetupTitle=Keluar dari Pemasangan
+ExitSetupMessage=Pemasangan belum selesai. Bila keluar sekarang, [name] tidak akan terpasang.%n%nKeluar dari pemasangan?
+ConfirmUninstall=Hapus %1 beserta seluruh komponennya dari komputer ini?
+UninstallStatusLabel=Mohon tunggu, %1 sedang dihapus.
+UninstalledAll=%1 berhasil dihapus dari komputer ini.
+UninstalledMost=%1 sudah dihapus, tetapi sebagian berkas tidak dapat dihapus dan dapat dibuang sendiri.
+StatusExtractFiles=Menyalin berkas...
+StatusCreateIcons=Membuat pintasan...
+StatusUninstalling=Menghapus %1...
+
 [Tasks]
 Name: "desktopicon"; Description: "Buat pintasan di Desktop"; GroupDescription: "Pintasan:"
 

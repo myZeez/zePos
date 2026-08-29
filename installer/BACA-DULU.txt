@@ -4,6 +4,35 @@ ZePOS - Aplikasi Kasir Lokal dan Offline
 Copyright (C) 2026 zeez3.o by Budi Aulyansyah Ahmad Trisna
 
 
+PERINGATAN WINDOWS SAAT MEMASANG
+--------------------------------
+
+Saat installer dijalankan, Windows menampilkan layar biru bertuliskan:
+
+    "Windows protected your PC"
+    "Unknown publisher"
+
+Ini normal dan bukan tanda berkasnya bermasalah. Windows menampilkannya
+untuk setiap aplikasi yang belum ditandatangani secara digital, dan tanda
+tangan itu memerlukan sertifikat berbayar dari otoritas tepercaya.
+
+Cara melanjutkan:
+
+    1. Klik "More info"
+    2. Klik "Run anyway"
+
+Sebelum memasang, keaslian berkas dapat diperiksa sendiri. Buka PowerShell
+pada folder tempat installer berada lalu jalankan:
+
+    Get-FileHash -Algorithm SHA256 ZePOS-Setup-1.0.0.exe
+
+Bandingkan hasilnya dengan isi berkas ZePOS-Setup-1.0.0.exe.sha256 yang
+disertakan. Bila keduanya sama persis, berkasnya utuh dan belum diubah
+siapa pun sejak dibuat.
+
+Jangan memasang bila nilainya berbeda.
+
+
 LETAK DATA TOKO
 ---------------
 

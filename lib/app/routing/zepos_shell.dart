@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:zepos/app/routing/back_action.dart';
 import 'package:zepos/app/routing/widgets/app_navigation.dart';
 import 'package:zepos/core/hardware/barcode_scan_detector.dart';
 import 'package:zepos/core/hardware/barcode_scan_listener.dart';
@@ -28,7 +30,10 @@ class ZePosShell extends StatefulWidget {
 }
 
 class _ZePosShellState extends State<ZePosShell> {
-  int _activeSection = 1;
+  /// Index of the Kasir tab, which is where the app opens and returns to.
+  static const _cashierSection = 1;
+
+  int _activeSection = _cashierSection;
   int _dataVersion = 0;
 
   /// Scans are delivered through a notifier rather than a constructor value.
@@ -36,6 +41,12 @@ class _ZePosShellState extends State<ZePosShell> {
   /// read, and the cart lives in that page's state -- scanning a second item
   /// would empty the basket.
   final ValueNotifier<ScanCandidate?> _lastScan = ValueNotifier(null);
+
+  /// How much the cashier has rung up but not yet taken payment for.
+  ///
+  /// Read only when the back button is pressed, so the shell does not rebuild
+  /// on every tap of a product.
+  final ValueNotifier<int> _cartItems = ValueNotifier(0);
   late final BarcodeScanListener _scanListener;
 
   @override
@@ -54,7 +65,53 @@ class _ZePosShellState extends State<ZePosShell> {
   void dispose() {
     _scanListener.stop();
     _lastScan.dispose();
+    _cartItems.dispose();
     super.dispose();
+  }
+
+  /// Carries out what [decideBackAction] chose.
+  Future<void> _handleBack() async {
+    final action = decideBackAction(
+      cartItemCount: _cartItems.value,
+      activeSection: _activeSection,
+      cashierSection: _cashierSection,
+    );
+    switch (action) {
+      case BackAction.goToCashier:
+        _selectSection(_cashierSection);
+        return;
+      case BackAction.confirmLeave:
+        if (!await _confirmLeaveWithCart(_cartItems.value)) return;
+      case BackAction.leave:
+        break;
+    }
+    await SystemNavigator.pop();
+  }
+
+  Future<bool> _confirmLeaveWithCart(int itemCount) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.shopping_bag_outlined, color: ZeColors.warning),
+        title: const Text('Keluar dari ZePOS?'),
+        content: Text(
+          'Keranjang masih berisi $itemCount item yang belum dibayar. '
+          'Keluar sekarang membatalkan transaksi ini.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Lanjut Transaksi'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: ZeColors.danger),
+            child: const Text('Keluar'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   void _handleScan(ScanCandidate candidate) {
@@ -78,66 +135,74 @@ class _ZePosShellState extends State<ZePosShell> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final mobile = constraints.maxWidth < 720;
-        return Scaffold(
-          body: SafeArea(
-            child: Column(
-              children: [
-                if (mobile)
-                  MobileTopBar(
-                    database: widget.database,
-                    dataVersion: _dataVersion,
-                    onViewStockAlerts: () => _selectSection(3),
-                  )
-                else
-                  DesktopSidebar(
-                    activeIndex: _activeSection,
-                    onChanged: _selectSection,
-                    database: widget.database,
-                    dataVersion: _dataVersion,
-                    onViewStockAlerts: () => _selectSection(3),
-                  ),
-                Expanded(child: _buildContent(_activeSection)),
-              ],
+        return PopScope(
+          // Always intercepted: whether back should leave, return to the till,
+          // or ask first depends on state the framework cannot see.
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _handleBack();
+          },
+          child: Scaffold(
+            body: SafeArea(
+              child: Column(
+                children: [
+                  if (mobile)
+                    MobileTopBar(
+                      database: widget.database,
+                      dataVersion: _dataVersion,
+                      onViewStockAlerts: () => _selectSection(3),
+                    )
+                  else
+                    DesktopSidebar(
+                      activeIndex: _activeSection,
+                      onChanged: _selectSection,
+                      database: widget.database,
+                      dataVersion: _dataVersion,
+                      onViewStockAlerts: () => _selectSection(3),
+                    ),
+                  Expanded(child: _buildContent(_activeSection)),
+                ],
+              ),
             ),
+            bottomNavigationBar: mobile
+                ? NavigationBar(
+                    selectedIndex: _activeSection <= 3 ? _activeSection : 4,
+                    onDestinationSelected: (index) {
+                      if (index < 4) {
+                        _selectSection(index);
+                      } else {
+                        _openMobileMoreMenu();
+                      }
+                    },
+                    destinations: const [
+                      NavigationDestination(
+                        icon: Icon(Icons.home_outlined),
+                        selectedIcon: Icon(Icons.home),
+                        label: 'Beranda',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.point_of_sale_outlined),
+                        selectedIcon: Icon(Icons.point_of_sale),
+                        label: 'Kasir',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.inventory_2_outlined),
+                        selectedIcon: Icon(Icons.inventory_2),
+                        label: 'Produk',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.warehouse_outlined),
+                        selectedIcon: Icon(Icons.warehouse),
+                        label: 'Stok',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.more_horiz),
+                        label: 'Lainnya',
+                      ),
+                    ],
+                  )
+                : null,
           ),
-          bottomNavigationBar: mobile
-              ? NavigationBar(
-                  selectedIndex: _activeSection <= 3 ? _activeSection : 4,
-                  onDestinationSelected: (index) {
-                    if (index < 4) {
-                      _selectSection(index);
-                    } else {
-                      _openMobileMoreMenu();
-                    }
-                  },
-                  destinations: const [
-                    NavigationDestination(
-                      icon: Icon(Icons.home_outlined),
-                      selectedIcon: Icon(Icons.home),
-                      label: 'Beranda',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.point_of_sale_outlined),
-                      selectedIcon: Icon(Icons.point_of_sale),
-                      label: 'Kasir',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.inventory_2_outlined),
-                      selectedIcon: Icon(Icons.inventory_2),
-                      label: 'Produk',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.warehouse_outlined),
-                      selectedIcon: Icon(Icons.warehouse),
-                      label: 'Stok',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.more_horiz),
-                      label: 'Lainnya',
-                    ),
-                  ],
-                )
-              : null,
         );
       },
     );
@@ -198,6 +263,7 @@ class _ZePosShellState extends State<ZePosShell> {
         return CashierPage(
           database: widget.database,
           scans: _lastScan,
+          cartItemCount: _cartItems,
           onSaleCompleted: () => setState(() => _dataVersion++),
         );
       case 2:

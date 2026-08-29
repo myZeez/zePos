@@ -23,6 +23,7 @@ class CashierPage extends StatefulWidget {
     required this.onSaleCompleted,
     this.initialSearch = '',
     this.scans,
+    this.cartItemCount,
   });
 
   final ZePosDatabase database;
@@ -34,6 +35,12 @@ class CashierPage extends StatefulWidget {
   /// Delivered as a listenable rather than a constructor value so a scan
   /// updates this page in place. Rebuilding it would discard the cart.
   final ValueListenable<ScanCandidate?>? scans;
+
+  /// Reports how much is in the cart so the shell can guard the back button.
+  ///
+  /// The cart lives in this page's state, but leaving the app is decided a
+  /// level up, and that decision needs to know whether a sale is half rung up.
+  final ValueNotifier<int>? cartItemCount;
 
   @override
   State<CashierPage> createState() => _CashierPageState();
@@ -162,7 +169,14 @@ class _CashierPageState extends State<CashierPage> {
         _cart[product] = nextQuantity;
       }
     });
+    _publishCartCount();
   }
+
+  /// Keeps the shell's view of the cart current.
+  ///
+  /// Called after every change rather than from build, so the shell learns the
+  /// cart emptied even while another section is on screen.
+  void _publishCartCount() => widget.cartItemCount?.value = _itemCount;
 
   /// Shows the cart as a sheet, which is how narrow screens reach it.
   ///
@@ -262,6 +276,7 @@ class _CashierPageState extends State<CashierPage> {
       _cart.clear();
       _isSavingSale = false;
     });
+    _publishCartCount();
     // The sale is stored and the cart is empty, so anything still showing the
     // old cart has to go before the cashier is told the payment went through.
     onCommitted?.call();

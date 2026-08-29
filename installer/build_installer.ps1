@@ -54,6 +54,33 @@ if (-not (Test-Path -LiteralPath (Join-Path $releaseDir 'zepos.exe'))) {
     throw "Hasil build tidak ditemukan di $releaseDir. Jalankan tanpa -SkipBuild."
 }
 
+# Sidik jari berkas aplikasi, ikut dipasang ke folder aplikasi.
+#
+# Ini bukan sidik jari installer-nya: nilai itu baru ada setelah installer
+# selesai dirakit, sehingga memasukkannya ke dalam dirinya sendiri mustahil.
+# Daftar ini gunanya memeriksa berkas yang sudah terpasang masih utuh.
+Write-Host 'Menghitung sidik jari berkas aplikasi...' -ForegroundColor Cyan
+$appFiles = Get-ChildItem -LiteralPath $releaseDir -Recurse -File |
+    Where-Object { $_.Extension -in '.exe', '.dll' } |
+    Sort-Object Name
+$appHashes = foreach ($file in $appFiles) {
+    "$((Get-FileHash -Algorithm SHA256 $file.FullName).Hash) *$($file.Name)"
+}
+$header = @(
+    '# Sidik jari SHA-256 berkas aplikasi ZePOS yang terpasang.',
+    '#',
+    '# Periksa keutuhan berkas dengan menjalankan perintah berikut pada',
+    '# folder aplikasi, lalu bandingkan hasilnya dengan daftar di bawah:',
+    '#',
+    '#   Get-ChildItem -Include *.exe,*.dll -Recurse | Get-FileHash -Algorithm SHA256',
+    '#',
+    '# Daftar ini tidak memuat sidik jari berkas pemasang itu sendiri, sebab',
+    '# nilainya baru terbentuk setelah pemasang selesai dirakit. Sidik jari',
+    '# pemasang disertakan terpisah di samping berkas unduhannya.',
+    ''
+)
+($header + $appHashes) | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'app-files.sha256') -Encoding ascii
+
 $compiler = Find-Compiler
 Write-Host 'Mengemas installer...' -ForegroundColor Cyan
 & $compiler $issFile

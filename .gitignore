@@ -49,3 +49,6 @@ app.*.map.json
 
 # Paket rilis siap bagikan (berkas besar, dibuat ulang dari build)
 /release/
+
+# Sidik jari berkas aplikasi, dihitung ulang tiap build
+installer/app-files.sha256

@@ -50,13 +50,21 @@ class AuthScaffold extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   child,
-                  const SizedBox(height: ZeSpace.md),
-                  // The maker's mark, kept quiet: it belongs on the way in,
-                  // not in the middle of serving a customer.
+                  const SizedBox(height: ZeSpace.sm),
+                  // The maker's mark, deliberately faint. It should be
+                  // findable by someone looking for it and unnoticed by a
+                  // cashier who is not.
                   Center(
-                    child: Text(
-                      BuildIdentity.watermark,
-                      style: ZeText.meta.copyWith(color: ZeColors.subtle),
+                    child: Opacity(
+                      opacity: 0.45,
+                      child: Text(
+                        BuildIdentity.watermark,
+                        style: ZeText.meta.copyWith(
+                          fontSize: 10,
+                          color: ZeColors.subtle,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
                     ),
                   ),
                 ],

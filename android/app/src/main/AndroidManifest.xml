@@ -15,7 +15,7 @@
         -->
         <meta-data
             android:name="io.zepos.build.watermark"
-            android:value="Zeez3.o by 13ud1.aat" />
+            android:value="ZeProduction by Zeez3.o" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

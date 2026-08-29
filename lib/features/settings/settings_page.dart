@@ -536,13 +536,16 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: ZeSpace.lg),
           Align(
             alignment: Alignment.centerLeft,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(BuildIdentity.watermark, style: ZeText.label),
-                const SizedBox(height: ZeSpace.xxs),
-                Text(BuildIdentity.copyright, style: ZeText.meta),
-              ],
+            child: Opacity(
+              opacity: 0.55,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(BuildIdentity.watermark, style: ZeText.meta),
+                  const SizedBox(height: ZeSpace.xxs),
+                  Text(BuildIdentity.copyright, style: ZeText.meta),
+                ],
+              ),
             ),
           ),
         ],

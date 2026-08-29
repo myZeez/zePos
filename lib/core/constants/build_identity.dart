@@ -5,7 +5,7 @@
 /// being retyped at each of them and drifting apart.
 abstract final class BuildIdentity {
   /// The mark shown to whoever is holding the app or the file.
-  static const watermark = 'Zeez3.o by 13ud1.aat';
+  static const watermark = 'ZeProduction by Zeez3.o';
 
   static const productName = 'ZePOS';
   static const copyright =

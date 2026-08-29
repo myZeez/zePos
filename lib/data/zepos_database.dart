@@ -1135,11 +1135,77 @@ class ZePosDatabase {
       ORDER BY inventory_movements.created_at ASC
       ''', args);
 
+    // Takings broken down by day, so a slow Monday or a market-day rush is
+    // visible instead of being averaged away across the month.
+    final dailyRows = await _database.rawQuery('''
+      SELECT
+        DATE(sales.created_at / 1000, 'unixepoch', 'localtime') AS day,
+        COUNT(DISTINCT sales.id) AS transaction_count,
+        COALESCE(SUM(sale_items.quantity), 0) AS item_count,
+        COALESCE(SUM(sale_items.line_total), 0) AS sales_total,
+        COALESCE(SUM((sale_items.price_snapshot - sale_items.cost_snapshot)
+            * sale_items.quantity), 0) AS gross_profit
+      FROM sales
+      INNER JOIN sale_items ON sale_items.sale_id = sales.id
+      WHERE sales.status = 'COMPLETED'
+        AND sales.created_at >= ? AND sales.created_at < ?
+      GROUP BY day
+      ORDER BY day ASC
+      ''', args);
+
+    // Which goods left the shelf on which day. This is the recap an owner
+    // reads to decide what to restock before the weekend.
+    final dailyProductRows = await _database.rawQuery('''
+      SELECT
+        DATE(sales.created_at / 1000, 'unixepoch', 'localtime') AS day,
+        sale_items.product_name_snapshot AS product_name,
+        SUM(sale_items.quantity) AS quantity,
+        SUM(sale_items.line_total) AS sales_total
+      FROM sale_items
+      INNER JOIN sales ON sales.id = sale_items.sale_id
+      WHERE sales.status = 'COMPLETED'
+        AND sales.created_at >= ? AND sales.created_at < ?
+      GROUP BY day, product_name
+      ORDER BY day ASC, quantity DESC
+      ''', args);
+
+    // Every product, including the ones that sold nothing.
+    //
+    // The sold-products query can only report goods that moved, so stock that
+    // never sold is invisible there -- and that is precisely the stock tying up
+    // the shop's money. A LEFT JOIN keeps those rows, counted as zero.
+    final movementByProductRows = await _database.rawQuery('''
+      SELECT
+        products.sku,
+        products.name,
+        products.category,
+        products.stock,
+        products.cost_price,
+        products.is_active,
+        COALESCE(SUM(sale_items.quantity), 0) AS quantity_sold,
+        COALESCE(SUM(sale_items.line_total), 0) AS sales_total,
+        MAX(sales.created_at) AS last_sold_at
+      FROM products
+      LEFT JOIN sale_items ON sale_items.product_id = products.id
+      LEFT JOIN sales ON sales.id = sale_items.sale_id
+        AND sales.status = 'COMPLETED'
+        AND sales.created_at >= ? AND sales.created_at < ?
+      GROUP BY products.id
+      ORDER BY quantity_sold DESC, products.name ASC
+      ''', args);
+
     return SalesExportData(
       summary: await loadSalesReport(start: start, end: end),
       sales: saleRows.map(SaleRecord.fromDatabase).toList(),
       products: productRows.map(SoldProduct.fromDatabase).toList(),
       movements: movementRows.map(InventoryMovement.fromDatabase).toList(),
+      daily: dailyRows.map(DailySales.fromDatabase).toList(),
+      dailyProducts: dailyProductRows
+          .map(DailyProductSale.fromDatabase)
+          .toList(),
+      productMovement: movementByProductRows
+          .map(ProductMovement.fromDatabase)
+          .toList(),
     );
   }
 
@@ -1886,12 +1952,115 @@ class SoldProduct {
 }
 
 /// Complete period data behind the Excel export.
+/// One trading day's takings.
+class DailySales {
+  const DailySales({
+    required this.date,
+    required this.transactionCount,
+    required this.itemCount,
+    required this.salesTotal,
+    required this.grossProfit,
+  });
+
+  final DateTime date;
+  final int transactionCount;
+  final int itemCount;
+  final int salesTotal;
+  final int grossProfit;
+
+  factory DailySales.fromDatabase(Map<String, Object?> values) => DailySales(
+    date: DateTime.parse(values['day']! as String),
+    transactionCount: (values['transaction_count']! as num).toInt(),
+    itemCount: (values['item_count']! as num).toInt(),
+    salesTotal: (values['sales_total']! as num).toInt(),
+    grossProfit: (values['gross_profit']! as num).toInt(),
+  );
+}
+
+/// What a single product sold on a single day.
+class DailyProductSale {
+  const DailyProductSale({
+    required this.date,
+    required this.productName,
+    required this.quantity,
+    required this.salesTotal,
+  });
+
+  final DateTime date;
+  final String productName;
+  final int quantity;
+  final int salesTotal;
+
+  factory DailyProductSale.fromDatabase(Map<String, Object?> values) =>
+      DailyProductSale(
+        date: DateTime.parse(values['day']! as String),
+        productName: values['product_name']! as String,
+        quantity: (values['quantity']! as num).toInt(),
+        salesTotal: (values['sales_total']! as num).toInt(),
+      );
+}
+
+/// How a product fared over the period, whether or not it sold.
+class ProductMovement {
+  const ProductMovement({
+    required this.sku,
+    required this.name,
+    required this.category,
+    required this.stock,
+    required this.costPrice,
+    required this.isActive,
+    required this.quantitySold,
+    required this.salesTotal,
+    required this.lastSoldAt,
+  });
+
+  final String sku;
+  final String name;
+  final String category;
+  final int stock;
+  final int costPrice;
+  final bool isActive;
+
+  /// Zero for goods that did not move at all in the period.
+  final int quantitySold;
+  final int salesTotal;
+
+  /// Null when the product sold nothing during the period.
+  final DateTime? lastSoldAt;
+
+  /// What the remaining stock cost the shop to buy.
+  int get stockValue => costPrice * stock;
+
+  /// Stock sitting still: on the shelf, in stock, and nothing sold.
+  bool get isDormant => isActive && quantitySold == 0 && stock > 0;
+
+  factory ProductMovement.fromDatabase(Map<String, Object?> values) {
+    final lastSold = values['last_sold_at'] as int?;
+    return ProductMovement(
+      sku: values['sku']! as String,
+      name: values['name']! as String,
+      category: values['category']! as String,
+      stock: (values['stock']! as num).toInt(),
+      costPrice: (values['cost_price']! as num).toInt(),
+      isActive: values['is_active']! as int == 1,
+      quantitySold: (values['quantity_sold']! as num).toInt(),
+      salesTotal: (values['sales_total']! as num).toInt(),
+      lastSoldAt: lastSold == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(lastSold),
+    );
+  }
+}
+
 class SalesExportData {
   const SalesExportData({
     required this.summary,
     required this.sales,
     required this.products,
     required this.movements,
+    required this.daily,
+    required this.dailyProducts,
+    required this.productMovement,
   });
 
   final SalesReport summary;
@@ -1901,4 +2070,25 @@ class SalesExportData {
   final List<SaleRecord> sales;
   final List<SoldProduct> products;
   final List<InventoryMovement> movements;
+
+  /// Takings per trading day.
+  final List<DailySales> daily;
+
+  /// Which goods left the shelf on which day.
+  final List<DailyProductSale> dailyProducts;
+
+  /// Every product with what it sold and what is left, including goods that
+  /// sold nothing at all.
+  final List<ProductMovement> productMovement;
+
+  /// Goods that moved, best first.
+  List<ProductMovement> get bestSellers =>
+      productMovement.where((item) => item.quantitySold > 0).toList();
+
+  /// Stock that earned nothing this period while still occupying the shelf.
+  List<ProductMovement> get dormantStock {
+    final dormant = productMovement.where((item) => item.isDormant).toList()
+      ..sort((a, b) => b.stockValue.compareTo(a.stockValue));
+    return dormant;
+  }
 }

@@ -7,7 +7,7 @@ void main() {
   test('penanda pembuat memakai satu sumber di seluruh berkas rilis', () {
     // Retyping the mark at each place is how the installer, the file
     // properties, and the screens end up disagreeing with each other.
-    expect(BuildIdentity.watermark, 'Zeez3.o by 13ud1.aat');
+    expect(BuildIdentity.watermark, 'ZeProduction by Zeez3.o');
 
     final windowsMetadata = File('windows/runner/Runner.rc').readAsStringSync();
     expect(windowsMetadata, contains(BuildIdentity.watermark));

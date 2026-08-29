@@ -47,6 +47,7 @@ List<String> columnValues(excel.Sheet sheet, int column, {int skipRows = 1}) {
 }
 
 void main() {
+  monthlyRecapTests();
   test('laporan periode memuat semua sheet yang dibutuhkan', () async {
     final database = await ZePosDatabase.openInMemory();
     addTearDown(database.close);
@@ -197,5 +198,139 @@ void main() {
     final notes = columnValues(sheet, 4);
     expect(notes, contains('Stok habis'));
     expect(notes, contains('Stok menipis'));
+  });
+}
+
+/// The monthly recap: what sold on which day, what is left, what never moved.
+void monthlyRecapTests() {
+  test('rekap harian memisahkan penjualan per tanggal', () async {
+    final database = await ZePosDatabase.openInMemory();
+    addTearDown(database.close);
+    final catalogue = await database.loadActiveProducts();
+    await database.completeSale(
+      cart: {catalogue.first: 2},
+      paymentMethod: 'CASH',
+      receivedAmount: catalogue.first.price * 2,
+    );
+    final today = DateTime.now();
+
+    final data = await database.loadSalesExport(start: today, end: today);
+
+    expect(data.daily, hasLength(1));
+    final day = data.daily.single;
+    expect(day.transactionCount, 1);
+    expect(day.itemCount, 2);
+    expect(day.salesTotal, catalogue.first.price * 2);
+  });
+
+  test('barang per tanggal mencatat apa yang terjual hari itu', () async {
+    final database = await ZePosDatabase.openInMemory();
+    addTearDown(database.close);
+    final catalogue = await database.loadActiveProducts();
+    await database.completeSale(
+      cart: {catalogue[0]: 3, catalogue[1]: 1},
+      paymentMethod: 'CASH',
+      receivedAmount: 999999,
+    );
+    final today = DateTime.now();
+
+    final data = await database.loadSalesExport(start: today, end: today);
+
+    final names = data.dailyProducts.map((entry) => entry.productName).toSet();
+    expect(names, containsAll([catalogue[0].name, catalogue[1].name]));
+    final first = data.dailyProducts.firstWhere(
+      (entry) => entry.productName == catalogue[0].name,
+    );
+    expect(first.quantity, 3);
+  });
+
+  test('barang yang tidak laku sama sekali tetap muncul', () async {
+    final database = await ZePosDatabase.openInMemory();
+    addTearDown(database.close);
+    final catalogue = await database.loadActiveProducts();
+    final sold = catalogue.first;
+    await database.completeSale(
+      cart: {sold: 1},
+      paymentMethod: 'CASH',
+      receivedAmount: sold.price,
+    );
+    final today = DateTime.now();
+
+    final data = await database.loadSalesExport(start: today, end: today);
+
+    // The sold-products list can only report goods that moved. Stock that
+    // never sold is exactly what ties up a shop's money, so it has to appear
+    // somewhere or the owner never learns about it.
+    expect(
+      data.products.map((item) => item.name),
+      isNot(contains(catalogue[1].name)),
+    );
+    expect(
+      data.productMovement.map((item) => item.name),
+      contains(catalogue[1].name),
+      reason: 'barang tanpa penjualan wajib tetap terdaftar',
+    );
+
+    final dormantNames = data.dormantStock.map((item) => item.name).toList();
+    expect(dormantNames, isNot(contains(sold.name)));
+    expect(dormantNames, contains(catalogue[1].name));
+  });
+
+  test('barang jarang laku diurutkan dari nilai stok terbesar', () async {
+    final database = await ZePosDatabase.openInMemory();
+    addTearDown(database.close);
+    await database.importProducts([
+      product('MURAH', name: 'Barang Murah', stock: 2, cost: 1000),
+      product('MAHAL', name: 'Barang Mahal', stock: 20, cost: 50000),
+    ]);
+    final today = DateTime.now();
+
+    final data = await database.loadSalesExport(start: today, end: today);
+    final dormant = data.dormantStock;
+
+    // Sorted by money tied up, because that is what makes it worth acting on.
+    expect(dormant.first.name, 'Barang Mahal');
+    expect(dormant.first.stockValue, 20 * 50000);
+  });
+
+  test('laporan memuat seluruh sheet rekap bulanan', () async {
+    final database = await ZePosDatabase.openInMemory();
+    addTearDown(database.close);
+    final catalogue = await database.loadActiveProducts();
+    await database.completeSale(
+      cart: {catalogue.first: 1},
+      paymentMethod: 'CASH',
+      receivedAmount: catalogue.first.price,
+    );
+    final today = DateTime.now();
+    final data = await database.loadSalesExport(start: today, end: today);
+
+    final workbook = excel.Excel.decodeBytes(
+      DocumentExportService.buildSalesReportExcel(
+        profile: _profile,
+        start: today,
+        end: today,
+        data: data,
+      ),
+    );
+
+    expect(
+      workbook.tables.keys,
+      containsAll(<String>[
+        'Rekap Harian',
+        'Barang per Tanggal',
+        'Barang Terlaris',
+        'Barang Jarang Laku',
+        'Sisa Stok',
+      ]),
+    );
+
+    // Stock left on the shelf has to match what the app itself reports.
+    final stockSheet = workbook.tables['Sisa Stok']!;
+    final skus = columnValues(stockSheet, 0);
+    final stocks = columnValues(stockSheet, 3);
+    final index = skus.indexOf(catalogue.first.sku);
+    expect(index, isNot(-1));
+    expect(stocks[index], '${catalogue.first.stock - 1}');
   });
 }

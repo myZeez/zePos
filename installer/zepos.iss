@@ -9,7 +9,7 @@
 
 #define AppName "ZePOS"
 #define AppVersion "1.0.0"
-#define AppPublisher "Zeez3.o by 13ud1.aat"
+#define AppPublisher "ZeProduction by Zeez3.o"
 #define AppExeName "zepos.exe"
 #define SourceDir "..\build\windows\x64\runner\Release"
 
@@ -108,15 +108,25 @@ Name: "desktopicon"; Description: "Buat pintasan di Desktop"; GroupDescription: 
 Source: "{#SourceDir}\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "BACA-DULU.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
+Source: "BACA-DULU.txt"; DestDir: "{app}"; Flags: ignoreversion
+; Sidik jari berkas aplikasi yang dipasang, dibuat oleh build_installer.ps1.
+;
+; Bukan sidik jari installer ini sendiri: nilai itu baru ada setelah installer
+; selesai dirakit, sehingga memasukkannya ke dalam dirinya sendiri mustahil.
+; Daftar ini gunanya memeriksa berkas yang sudah terpasang masih utuh.
+Source: "app-files.sha256"; DestDir: "{app}"; DestName: "SHA256SUMS.txt"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
+; Pilihan yang muncul sebagai kotak centang pada halaman terakhir pemasangan.
+; Menjalankan aplikasi dicentang lebih dulu karena itu yang paling sering
+; diinginkan; panduan dibiarkan kosong agar tidak memaksa membuka Notepad.
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Jalankan {#AppName} sekarang"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\BACA-DULU.txt"; Description: "Baca panduan penggunaan"; Flags: shellexec nowait postinstall skipifsilent unchecked
 
 [Code]
 function StoreDataDir: String;

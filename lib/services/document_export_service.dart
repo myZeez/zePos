@@ -902,6 +902,115 @@ class DocumentExportService {
     }
     _widths(payments, const [24.0, 18.0, 12.0]);
 
+    // Takings day by day, so a slow Monday or a market-day rush stays visible
+    // instead of being averaged away across the month.
+    final daily = workbook['Rekap Harian'];
+    _headerRow(daily, const [
+      'Tanggal',
+      'Transaksi',
+      'Item Terjual',
+      'Omzet',
+      'Laba Kotor',
+    ]);
+    for (final day in data.daily) {
+      daily.appendRow([
+        excel.TextCellValue(_dateOnly(day.date)),
+        excel.IntCellValue(day.transactionCount),
+        excel.IntCellValue(day.itemCount),
+        excel.IntCellValue(day.salesTotal),
+        excel.IntCellValue(day.grossProfit),
+      ]);
+    }
+    _widths(daily, const [16.0, 12.0, 14.0, 16.0, 16.0]);
+
+    // Which goods left the shelf on which day: the recap an owner reads before
+    // deciding what to restock.
+    final dailyItems = workbook['Barang per Tanggal'];
+    _headerRow(dailyItems, const ['Tanggal', 'Produk', 'Jumlah', 'Penjualan']);
+    for (final entry in data.dailyProducts) {
+      dailyItems.appendRow([
+        excel.TextCellValue(_dateOnly(entry.date)),
+        excel.TextCellValue(entry.productName),
+        excel.IntCellValue(entry.quantity),
+        excel.IntCellValue(entry.salesTotal),
+      ]);
+    }
+    _widths(dailyItems, const [16.0, 36.0, 12.0, 16.0]);
+
+    final ranking = workbook['Barang Terlaris'];
+    _headerRow(ranking, const [
+      'Peringkat',
+      'Produk',
+      'Kategori',
+      'Terjual',
+      'Penjualan',
+      'Sisa Stok',
+    ]);
+    for (final (index, item) in data.bestSellers.indexed) {
+      ranking.appendRow([
+        excel.IntCellValue(index + 1),
+        excel.TextCellValue(item.name),
+        excel.TextCellValue(item.category),
+        excel.IntCellValue(item.quantitySold),
+        excel.IntCellValue(item.salesTotal),
+        excel.IntCellValue(item.stock),
+      ]);
+    }
+    _widths(ranking, const [10.0, 36.0, 20.0, 12.0, 16.0, 12.0]);
+
+    // Stock that earned nothing while still occupying the shelf.
+    //
+    // The sold-products list can only show goods that moved, so this is the
+    // one place the owner sees what their money is sitting in. Sorted by the
+    // value tied up, because that is what makes it worth acting on.
+    final dormant = workbook['Barang Jarang Laku'];
+    _headerRow(dormant, const [
+      'Kode Produk',
+      'Produk',
+      'Kategori',
+      'Sisa Stok',
+      'Nilai Stok',
+      'Terakhir Terjual',
+    ]);
+    for (final item in data.dormantStock) {
+      dormant.appendRow([
+        excel.TextCellValue(item.sku),
+        excel.TextCellValue(item.name),
+        excel.TextCellValue(item.category),
+        excel.IntCellValue(item.stock),
+        excel.IntCellValue(item.stockValue),
+        excel.TextCellValue(
+          item.lastSoldAt == null
+              ? 'Belum pernah pada periode ini'
+              : _formatDateTime(item.lastSoldAt!),
+        ),
+      ]);
+    }
+    _widths(dormant, const [18.0, 36.0, 20.0, 12.0, 16.0, 28.0]);
+
+    final stock = workbook['Sisa Stok'];
+    _headerRow(stock, const [
+      'Kode Produk',
+      'Produk',
+      'Kategori',
+      'Sisa Stok',
+      'Nilai Stok',
+      'Terjual Periode Ini',
+      'Status',
+    ]);
+    for (final item in data.productMovement) {
+      stock.appendRow([
+        excel.TextCellValue(item.sku),
+        excel.TextCellValue(item.name),
+        excel.TextCellValue(item.category),
+        excel.IntCellValue(item.stock),
+        excel.IntCellValue(item.stockValue),
+        excel.IntCellValue(item.quantitySold),
+        excel.TextCellValue(item.isActive ? 'Aktif' : 'Nonaktif'),
+      ]);
+    }
+    _widths(stock, const [18.0, 36.0, 20.0, 12.0, 16.0, 18.0, 12.0]);
+
     final movements = workbook['Mutasi Stok'];
     _headerRow(movements, const [
       'Tanggal',
@@ -1121,6 +1230,12 @@ class DocumentExportService {
 
   static String _dateStamp(DateTime date) =>
       '${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}';
+
+  /// Year first, so a spreadsheet sorts the days in the order they happened
+  /// rather than by the digits that come first in dd/MM.
+  static String _dateOnly(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}'
+      '-${date.day.toString().padLeft(2, '0')}';
 
   static String _safeFileName(String value) => value
       .trim()

@@ -33,6 +33,29 @@ siapa pun sejak dibuat.
 Jangan memasang bila nilainya berbeda.
 
 
+AKTIVASI
+--------
+
+ZePOS harus diaktifkan sebelum dipakai. Satu kunci hanya berlaku untuk
+SATU perangkat, yaitu perangkat yang Kode Perangkatnya Anda kirim ke
+penjual. Kunci itu tidak dapat dipakai di perangkat lain.
+
+Cara mengaktifkan:
+
+    1. Buka ZePOS. Layar Aktivasi menampilkan Kode Perangkat, misalnya
+       ABCD-EFGH-IJKL-MNOP.
+    2. Tekan "Salin", lalu kirim kode itu ke penjual.
+    3. Penjual membalas dengan kunci aktivasi.
+    4. Tekan "Tempel" pada kolom Kunci Aktivasi, lalu tekan "Aktifkan".
+
+Aktivasi cukup sekali dan berlaku seterusnya. Tidak perlu internet.
+Memasang ulang ZePOS di perangkat yang sama tetap memakai kunci yang sama;
+simpan pesan kunci dari penjual.
+
+Bila berganti perangkat atau Windows/Android dipasang ulang dari awal,
+Kode Perangkat berubah dan Anda perlu meminta kunci baru ke penjual.
+
+
 LETAK DATA TOKO
 ---------------
 

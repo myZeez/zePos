@@ -21,6 +21,7 @@ import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.zeez3o.zepos/bluetooth_printer"
+    private val deviceChannelName = "com.zeez3o.zepos/device"
     private val permissionRequestCode = 7312
     private val pairTimeoutMillis = 60_000L
     private val sppUuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
@@ -33,6 +34,21 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // ANDROID_ID is stable per device and per app signing key, so it
+        // survives reinstalling ZePOS. The model is a label only: every phone
+        // of one model shares it.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, deviceChannelName)
+            .setMethodCallHandler { call, result ->
+                if (call.method == "identity") {
+                    val id = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+                    result.success(
+                        mapOf("id" to (id ?: ""), "model" to "${Build.MANUFACTURER} ${Build.MODEL}"),
+                    )
+                } else {
+                    result.notImplemented()
+                }
+            }
+
         val methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
         channel = methodChannel
         methodChannel.setMethodCallHandler { call, result ->

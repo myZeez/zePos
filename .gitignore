@@ -52,3 +52,9 @@ app.*.map.json
 
 # Sidik jari berkas aplikasi, dihitung ulang tiap build
 installer/app-files.sha256
+
+# Kunci lisensi penjual: tidak boleh pernah masuk repo
+*.key
+*.key.pub
+zepos-license*
+*.license

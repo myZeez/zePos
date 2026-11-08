@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:zepos/app/routing/zepos_shell.dart';
 import 'package:zepos/app/widgets/app_status_pages.dart';
+import 'package:zepos/core/licensing/license_service.dart';
+import 'package:zepos/features/licensing/license_gate.dart';
 import 'package:zepos/data/zepos_database.dart';
 import 'package:zepos/domain/store_profile.dart';
 import 'package:zepos/features/auth/change_password_page.dart';
@@ -10,21 +13,28 @@ import 'package:zepos/features/auth/onboarding_page.dart';
 import 'package:zepos/ui/zepos_tokens.dart';
 
 class ZePosApp extends StatefulWidget {
-  const ZePosApp({super.key, this.database});
+  const ZePosApp({super.key, this.database, this.licenseService});
 
   final ZePosDatabase? database;
+  final LicenseService? licenseService;
 
   @override
   State<ZePosApp> createState() => _ZePosAppState();
 }
 
 class _ZePosAppState extends State<ZePosApp> {
+  /// Lets a developer run a debug build without activating it. Release builds
+  /// ignore the flag entirely, so a shipped app cannot be unlocked this way.
+  static const _skipLicense = bool.fromEnvironment('ZEPOS_SKIP_LICENSE');
+
   late Future<ZePosDatabase> _databaseFuture;
+  late final LicenseService _licenseService;
   var _isAuthenticated = false;
 
   @override
   void initState() {
     super.initState();
+    _licenseService = widget.licenseService ?? LicenseService();
     _openDatabase();
   }
 
@@ -142,78 +152,87 @@ class _ZePosAppState extends State<ZePosApp> {
           ),
         ),
       ),
-      home: FutureBuilder<ZePosDatabase>(
-        future: _databaseFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const AppLoadingPage();
-          }
-          if (snapshot.hasError || !snapshot.hasData) {
-            return AppDatabaseErrorPage(onRetry: () => setState(_openDatabase));
-          }
-          return FutureBuilder<StoreProfile?>(
-            future: snapshot.data!.loadStoreProfile(),
-            builder: (context, profileSnapshot) {
-              if (profileSnapshot.connectionState != ConnectionState.done) {
-                return const AppLoadingPage();
-              }
-              if (profileSnapshot.hasError) {
-                return AppDatabaseErrorPage(
-                  onRetry: () => setState(_openDatabase),
-                );
-              }
-              if (profileSnapshot.data == null) {
-                return OnboardingPage(
-                  database: snapshot.data!,
-                  onCompleted: () => setState(() {
-                    _isAuthenticated = false;
-                    _openDatabase();
-                  }),
-                );
-              }
-              return FutureBuilder<CredentialInfo?>(
-                future: snapshot.data!.loadCredentialInfo(),
-                builder: (context, credentialSnapshot) {
-                  if (credentialSnapshot.connectionState !=
-                      ConnectionState.done) {
-                    return const AppLoadingPage();
-                  }
-                  if (credentialSnapshot.hasError) {
-                    return AppDatabaseErrorPage(
-                      onRetry: () => setState(_openDatabase),
-                    );
-                  }
-                  final credentials = credentialSnapshot.data;
-                  if (credentials == null) {
-                    return CredentialSetupPage(
-                      database: snapshot.data!,
-                      onCompleted: () => setState(_openDatabase),
-                    );
-                  }
-                  if (!_isAuthenticated) {
-                    return LoginPage(
-                      database: snapshot.data!,
-                      onAuthenticated: () =>
-                          setState(() => _isAuthenticated = true),
-                    );
-                  }
-                  if (credentials.mustChangePassword) {
-                    return ChangePasswordPage(
-                      database: snapshot.data!,
-                      username: credentials.username,
-                      onCompleted: () => setState(_openDatabase),
-                    );
-                  }
-                  return ZePosShell(
-                    database: snapshot.data!,
-                    onDatabaseRestored: () => setState(_openDatabase),
-                  );
-                },
+      home: _gated(
+        FutureBuilder<ZePosDatabase>(
+          future: _databaseFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const AppLoadingPage();
+            }
+            if (snapshot.hasError || !snapshot.hasData) {
+              return AppDatabaseErrorPage(
+                onRetry: () => setState(_openDatabase),
               );
-            },
-          );
-        },
+            }
+            return FutureBuilder<StoreProfile?>(
+              future: snapshot.data!.loadStoreProfile(),
+              builder: (context, profileSnapshot) {
+                if (profileSnapshot.connectionState != ConnectionState.done) {
+                  return const AppLoadingPage();
+                }
+                if (profileSnapshot.hasError) {
+                  return AppDatabaseErrorPage(
+                    onRetry: () => setState(_openDatabase),
+                  );
+                }
+                if (profileSnapshot.data == null) {
+                  return OnboardingPage(
+                    database: snapshot.data!,
+                    onCompleted: () => setState(() {
+                      _isAuthenticated = false;
+                      _openDatabase();
+                    }),
+                  );
+                }
+                return FutureBuilder<CredentialInfo?>(
+                  future: snapshot.data!.loadCredentialInfo(),
+                  builder: (context, credentialSnapshot) {
+                    if (credentialSnapshot.connectionState !=
+                        ConnectionState.done) {
+                      return const AppLoadingPage();
+                    }
+                    if (credentialSnapshot.hasError) {
+                      return AppDatabaseErrorPage(
+                        onRetry: () => setState(_openDatabase),
+                      );
+                    }
+                    final credentials = credentialSnapshot.data;
+                    if (credentials == null) {
+                      return CredentialSetupPage(
+                        database: snapshot.data!,
+                        onCompleted: () => setState(_openDatabase),
+                      );
+                    }
+                    if (!_isAuthenticated) {
+                      return LoginPage(
+                        database: snapshot.data!,
+                        onAuthenticated: () =>
+                            setState(() => _isAuthenticated = true),
+                      );
+                    }
+                    if (credentials.mustChangePassword) {
+                      return ChangePasswordPage(
+                        database: snapshot.data!,
+                        username: credentials.username,
+                        onCompleted: () => setState(_openDatabase),
+                      );
+                    }
+                    return ZePosShell(
+                      database: snapshot.data!,
+                      onDatabaseRestored: () => setState(_openDatabase),
+                    );
+                  },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
+  }
+
+  Widget _gated(Widget child) {
+    if (!kReleaseMode && _skipLicense) return child;
+    return LicenseGate(service: _licenseService, child: child);
   }
 }

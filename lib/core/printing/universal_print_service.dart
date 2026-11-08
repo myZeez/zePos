@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -14,8 +14,18 @@ class UniversalPrintService {
   static final Map<String, Future<void>> _printerQueues = {};
   static final Set<String> _activeDedupeKeys = {};
 
-  static Future<List<Printer>> discoverPrinters() async {
+  static Future<List<Printer>> discoverPrinters() async =>
+      (await discoverPrintersWithStatus()).printers;
+
+  /// Lists printers and, when Bluetooth could not be read, says why.
+  ///
+  /// A Bluetooth failure (permission refused, radio off, no printer paired)
+  /// must not hide the other printers or surface as a generic error: the
+  /// cashier can only fix it if told which of those it was.
+  static Future<({List<Printer> printers, String? bluetoothIssue})>
+  discoverPrintersWithStatus() async {
     final printers = <Printer>[];
+    String? bluetoothIssue;
     try {
       final info = await Printing.info();
       if (info.canListPrinters) {
@@ -25,13 +35,23 @@ class UniversalPrintService {
       // Android devices may not expose a system print service.
     }
     if (BluetoothPrinterService.isSupported) {
-      printers.addAll(await BluetoothPrinterService.discoverBondedPrinters());
+      try {
+        final bonded = await BluetoothPrinterService.discoverBondedPrinters();
+        printers.addAll(bonded);
+        if (bonded.isEmpty) {
+          bluetoothIssue = BluetoothPrinterService.noPairedPrinterMessage;
+        }
+      } on PlatformException catch (error) {
+        bluetoothIssue = BluetoothPrinterService.describeError(error.code);
+      } catch (_) {
+        bluetoothIssue = BluetoothPrinterService.describeError('UNKNOWN');
+      }
     }
     printers.sort((left, right) {
       if (left.isDefault != right.isDefault) return left.isDefault ? -1 : 1;
       return left.name.toLowerCase().compareTo(right.name.toLowerCase());
     });
-    return printers;
+    return (printers: printers, bluetoothIssue: bluetoothIssue);
   }
 
   static Future<PrinterBinding?> resolveLabelPrinter({

@@ -2,6 +2,15 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Mencari printer di sekitar. Android 12+ memakai BLUETOOTH_SCAN
+         (tanpa dipakai untuk lokasi); Android 11 ke bawah mewajibkan izin
+         Lokasi hanya agar hasil pemindaian Bluetooth boleh dibaca. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
 
     <application

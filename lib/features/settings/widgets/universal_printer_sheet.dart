@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import 'package:zepos/core/printing/bluetooth_printer_service.dart';
 import 'package:zepos/core/printing/label_print_validator.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/core/printing/universal_print_service.dart';
 import 'package:zepos/data/zepos_database.dart';
+import 'package:zepos/features/settings/widgets/bluetooth_printer_picker.dart';
 import 'package:zepos/services/document_export_service.dart';
 import 'package:zepos/ui/zepos_tokens.dart';
 
@@ -60,22 +62,61 @@ class _UniversalPrinterSettingsSheetState
       _message = null;
     });
     try {
-      final printers = await UniversalPrintService.discoverPrinters();
+      final discovery =
+          await UniversalPrintService.discoverPrintersWithStatus();
       if (!mounted) return;
       setState(() {
-        _printers = printers;
+        _printers = discovery.printers;
         _isDiscovering = false;
-        if (printers.isEmpty) {
-          _message = 'Windows belum melaporkan printer yang tersedia.';
+        if (discovery.bluetoothIssue case final String issue) {
+          _message = issue;
+        } else if (discovery.printers.isEmpty) {
+          _message = 'Belum ada printer yang dilaporkan sistem.';
         }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _isDiscovering = false;
-        _message = 'Daftar printer Windows belum dapat dibaca.';
+        _message = 'Daftar printer belum dapat dibaca. Tekan muat ulang.';
       });
     }
+  }
+
+  void _bindPrinter(_PrintConfigurationDraft draft, Printer printer) {
+    draft.binding = PrinterBinding(
+      id: 'binding_${_purpose.name}',
+      purpose: _purpose,
+      profileId: draft.profile.id,
+      printerUrl: printer.url,
+      printerName: printer.name,
+      printerModel: printer.model,
+      updatedAt: DateTime.now(),
+    );
+    if (printer.url.startsWith('bluetooth://')) {
+      draft.dispatchMode = PrintDispatchMode.direct;
+      draft.usePrinterSettings = false;
+    }
+  }
+
+  Future<void> _pickBluetoothPrinter() async {
+    final device = await showModalBottomSheet<NearbyBluetoothDevice>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => const BluetoothPrinterPicker(),
+    );
+    if (device == null || !mounted) return;
+    final printer = Printer(
+      url: BluetoothPrinterService.urlFor(device.address),
+      name: device.displayName,
+      model: 'Bluetooth Classic',
+      isAvailable: true,
+    );
+    setState(() {
+      _bindPrinter(_drafts[_purpose]!, printer);
+      _message = null;
+    });
   }
 
   Future<void> _test() async {
@@ -207,7 +248,7 @@ class _UniversalPrinterSettingsSheetState
                 const SizedBox(height: ZeSpace.xxs),
                 Text(
                   isAndroid
-                      ? 'Pilih printer Bluetooth yang sudah dipasangkan untuk setiap jenis dokumen.'
+                      ? 'Pilih printer Bluetooth untuk setiap jenis dokumen.'
                       : 'Pilih printer Windows dan profil kemampuan untuk setiap jenis dokumen.',
                   style: ZeText.meta,
                 ),
@@ -230,7 +271,7 @@ class _UniversalPrinterSettingsSheetState
                         SizedBox(width: ZeSpace.xs),
                         Expanded(
                           child: Text(
-                            'Pasangkan printer terlebih dahulu dari Pengaturan Bluetooth Android, lalu tekan muat ulang.',
+                            'Nyalakan printer, lalu tekan kolom Printer Bluetooth untuk mencari dan menghubungkannya. Printer baru dipasangkan langsung dari sini.',
                             style: ZeText.body,
                           ),
                         ),
@@ -312,66 +353,63 @@ class _UniversalPrinterSettingsSheetState
                         ),
                         SizedBox(
                           width: width,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: draft.binding?.printerUrl ?? '',
-                            isExpanded: true,
-                            decoration: InputDecoration(
-                              labelText: isAndroid
-                                  ? 'Printer Bluetooth'
-                                  : 'Printer Windows',
-                              suffixIcon: _isDiscovering
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(14),
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : IconButton(
-                                      tooltip: 'Muat ulang printer',
-                                      onPressed: _discover,
-                                      icon: const Icon(Icons.refresh),
-                                    ),
-                            ),
-                            items: [
-                              const DropdownMenuItem(
-                                value: '',
-                                child: Text('Belum dihubungkan'),
-                              ),
-                              for (final printer in visiblePrinters)
-                                DropdownMenuItem(
-                                  value: printer.url,
-                                  child: Text(
-                                    '${printer.name}${printer.isDefault ? ' · Default' : ''}',
-                                    overflow: TextOverflow.ellipsis,
+                          child: isAndroid
+                              ? _BluetoothPrinterField(
+                                  binding: draft.binding,
+                                  enabled: !_isSaving,
+                                  onPick: _pickBluetoothPrinter,
+                                  onClear: () =>
+                                      setState(() => draft.binding = null),
+                                )
+                              : DropdownButtonFormField<String>(
+                                  initialValue: draft.binding?.printerUrl ?? '',
+                                  isExpanded: true,
+                                  decoration: InputDecoration(
+                                    labelText: isAndroid
+                                        ? 'Printer Bluetooth'
+                                        : 'Printer Windows',
+                                    suffixIcon: _isDiscovering
+                                        ? const Padding(
+                                            padding: EdgeInsets.all(14),
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : IconButton(
+                                            tooltip: 'Muat ulang printer',
+                                            onPressed: _discover,
+                                            icon: const Icon(Icons.refresh),
+                                          ),
                                   ),
+                                  items: [
+                                    const DropdownMenuItem(
+                                      value: '',
+                                      child: Text('Belum dihubungkan'),
+                                    ),
+                                    for (final printer in visiblePrinters)
+                                      DropdownMenuItem(
+                                        value: printer.url,
+                                        child: Text(
+                                          '${printer.name}${printer.isDefault ? ' · Default' : ''}',
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                  ],
+                                  onChanged: _isSaving
+                                      ? null
+                                      : (value) => setState(() {
+                                          if (value == null || value.isEmpty) {
+                                            draft.binding = null;
+                                            return;
+                                          }
+                                          _bindPrinter(
+                                            draft,
+                                            visiblePrinters.firstWhere(
+                                              (item) => item.url == value,
+                                            ),
+                                          );
+                                        }),
                                 ),
-                            ],
-                            onChanged: _isSaving
-                                ? null
-                                : (value) => setState(() {
-                                    if (value == null || value.isEmpty) {
-                                      draft.binding = null;
-                                      return;
-                                    }
-                                    final printer = visiblePrinters.firstWhere(
-                                      (item) => item.url == value,
-                                    );
-                                    draft.binding = PrinterBinding(
-                                      id: 'binding_${_purpose.name}',
-                                      purpose: _purpose,
-                                      profileId: draft.profile.id,
-                                      printerUrl: printer.url,
-                                      printerName: printer.name,
-                                      printerModel: printer.model,
-                                      updatedAt: DateTime.now(),
-                                    );
-                                    if (value.startsWith('bluetooth://')) {
-                                      draft.dispatchMode =
-                                          PrintDispatchMode.direct;
-                                      draft.usePrinterSettings = false;
-                                    }
-                                  }),
-                          ),
                         ),
                         SizedBox(
                           width: width,
@@ -808,6 +846,49 @@ class _MediaPresetEditor extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Read-only field that opens the Bluetooth picker, replacing the dropdown on
+/// Android, where the list of printers has to be searched for rather than read.
+class _BluetoothPrinterField extends StatelessWidget {
+  const _BluetoothPrinterField({
+    required this.binding,
+    required this.enabled,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  final PrinterBinding? binding;
+  final bool enabled;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = binding;
+    return InkWell(
+      borderRadius: ZeRadius.control,
+      onTap: enabled ? onPick : null,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Printer Bluetooth',
+          suffixIcon: current == null
+              ? const Icon(Icons.bluetooth_searching)
+              : IconButton(
+                  tooltip: 'Lepas printer',
+                  onPressed: enabled ? onClear : null,
+                  icon: const Icon(Icons.link_off),
+                ),
+        ),
+        child: Text(
+          current == null
+              ? 'Belum dihubungkan · ketuk untuk mencari'
+              : current.printerName,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
     );
   }
 }

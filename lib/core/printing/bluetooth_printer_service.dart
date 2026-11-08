@@ -6,6 +6,68 @@ import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 
+/// A Bluetooth device as the picker shows it: either already paired with this
+/// phone, or just heard during a scan.
+class NearbyBluetoothDevice {
+  const NearbyBluetoothDevice({
+    required this.address,
+    required this.name,
+    required this.isPaired,
+  });
+
+  final String address;
+  final String name;
+  final bool isPaired;
+
+  /// Many printers and sensors advertise no name at all, so the address stands
+  /// in; otherwise the row would be blank and impossible to tell apart.
+  String get displayName =>
+      name.trim().isEmpty ? 'Perangkat tanpa nama' : name.trim();
+
+  NearbyBluetoothDevice copyWith({bool? isPaired}) => NearbyBluetoothDevice(
+    address: address,
+    name: name,
+    isPaired: isPaired ?? this.isPaired,
+  );
+
+  static NearbyBluetoothDevice? tryParse(Map<Object?, Object?>? values) {
+    final address = values?['address'];
+    if (address is! String || address.isEmpty) return null;
+    return NearbyBluetoothDevice(
+      address: address,
+      name: (values?['name'] as String?) ?? '',
+      isPaired: values?['bonded'] == true,
+    );
+  }
+
+  /// Combines paired and scanned devices into one list for the picker.
+  ///
+  /// A device heard in a scan may already be paired, so entries are merged by
+  /// address instead of listed twice. Paired devices come first because they
+  /// are the ones that can be used straight away; within each group, named
+  /// devices precede the nameless ones, which are usually not printers.
+  static List<NearbyBluetoothDevice> merge(
+    Iterable<NearbyBluetoothDevice> paired,
+    Iterable<NearbyBluetoothDevice> found,
+  ) {
+    final byAddress = <String, NearbyBluetoothDevice>{};
+    for (final device in found) {
+      byAddress[device.address] = device;
+    }
+    for (final device in paired) {
+      byAddress[device.address] = device.copyWith(isPaired: true);
+    }
+    return byAddress.values.toList()..sort((left, right) {
+      if (left.isPaired != right.isPaired) return left.isPaired ? -1 : 1;
+      final leftNamed = left.name.trim().isNotEmpty;
+      if (leftNamed != right.name.trim().isNotEmpty) return leftNamed ? -1 : 1;
+      return left.displayName.toLowerCase().compareTo(
+        right.displayName.toLowerCase(),
+      );
+    });
+  }
+}
+
 class BluetoothPrinterService {
   BluetoothPrinterService._();
 
@@ -43,24 +105,82 @@ class BluetoothPrinterService {
     }
   }
 
-  static Future<List<Printer>> discoverBondedPrinters() async {
+  static Future<List<Printer>> discoverBondedPrinters() async => [
+    for (final device in await listPaired())
+      Printer(
+        url: '$_scheme${device.address}',
+        name: device.displayName,
+        model: 'Bluetooth Classic',
+        isAvailable: true,
+      ),
+  ];
+
+  static Future<List<NearbyBluetoothDevice>> listPaired() async {
     if (!isSupported) return const [];
     final devices = await _channel.invokeListMethod<Map<Object?, Object?>>(
       'listBondedPrinters',
     );
     return [
       for (final device in devices ?? const <Map<Object?, Object?>>[])
-        if (device['address'] case final String address)
-          Printer(
-            url: '$_scheme$address',
-            name: (device['name'] as String?)?.trim().isNotEmpty == true
-                ? device['name']! as String
-                : 'Printer Bluetooth $address',
-            model: 'Bluetooth Classic',
-            isAvailable: true,
-          ),
+        ?NearbyBluetoothDevice.tryParse(device),
     ];
   }
+
+  /// Streams devices found nearby until the scan ends or the listener leaves.
+  ///
+  /// Android reports each device as it is heard, so the list can fill in while
+  /// the cashier watches rather than appearing after a long wait. Failures,
+  /// such as a refused permission, arrive as a [PlatformException] on the
+  /// stream.
+  static Stream<NearbyBluetoothDevice> scanNearby() {
+    late final StreamController<NearbyBluetoothDevice> controller;
+    controller = StreamController<NearbyBluetoothDevice>(
+      onListen: () async {
+        _channel.setMethodCallHandler((call) async {
+          switch (call.method) {
+            case 'deviceFound':
+              final parsed = NearbyBluetoothDevice.tryParse(
+                call.arguments as Map<Object?, Object?>?,
+              );
+              if (parsed != null && !controller.isClosed) {
+                controller.add(parsed);
+              }
+            case 'discoveryFinished':
+              if (!controller.isClosed) await controller.close();
+          }
+        });
+        try {
+          await _channel.invokeMethod<void>('startDiscovery');
+        } catch (error, stack) {
+          if (!controller.isClosed) {
+            controller.addError(error, stack);
+            await controller.close();
+          }
+        }
+      },
+      onCancel: () async {
+        _channel.setMethodCallHandler(null);
+        try {
+          await _channel.invokeMethod<void>('stopDiscovery');
+        } catch (_) {
+          // Nothing left to stop.
+        }
+      },
+    );
+    return controller.stream;
+  }
+
+  /// Pairs with a device found by [scanNearby]; Android shows its own PIN
+  /// prompt when the printer asks for one. Throws [PlatformException].
+  static Future<void> pair(String address) =>
+      _channel.invokeMethod<void>('pair', {'address': address});
+
+  static Future<void> openSystemSettings() async {
+    if (!isSupported) return;
+    await _channel.invokeMethod<void>('openSettings');
+  }
+
+  static String urlFor(String address) => '$_scheme$address';
 
   static Future<PrintJobResult> printPdf({
     required Uint8List pdf,
@@ -124,7 +244,7 @@ class BluetoothPrinterService {
       return PrintJobResult(
         jobId: jobId,
         state: PrintJobState.failedBeforeSpool,
-        userMessage: _friendlyPlatformError(error.code),
+        userMessage: describeError(error.code),
         errorCode: error.code,
         retrySafe: true,
       );
@@ -140,9 +260,32 @@ class BluetoothPrinterService {
     }
   }
 
-  static String _friendlyPlatformError(String code) => switch (code) {
+  /// Shown when nothing is paired, so the cashier learns what the list is
+  /// built from. Android only lists printers it has paired with; one that is
+  /// merely switched on and nearby never appears.
+  static const noPairedPrinterMessage =
+      'Belum ada printer Bluetooth yang dipasangkan. Tekan kolom Printer '
+      'Bluetooth untuk mencari dan menghubungkan printer.';
+
+  static String describeError(String code) => switch (code) {
+    'BLUETOOTH_LOCATION_DENIED' =>
+      'Android 11 ke bawah mewajibkan izin Lokasi untuk mencari perangkat '
+          'Bluetooth. Buka Info Aplikasi ZePOS > Izin, aktifkan Lokasi, lalu '
+          'pindai ulang.',
+    'BLUETOOTH_SCAN_FAILED' =>
+      'Pemindaian tidak dapat dimulai. Pastikan Bluetooth aktif; di Android '
+          '11 ke bawah, aktifkan juga Lokasi.',
+    'BLUETOOTH_PAIR_FAILED' =>
+      'Printer tidak mau dipasangkan. Pastikan printer menyala dan dekat; '
+          'bila diminta PIN, coba 0000 atau 1234.',
+    'BLUETOOTH_PAIR_TIMEOUT' =>
+      'Pemasangan terlalu lama. Dekatkan printer lalu coba lagi.',
     'BLUETOOTH_PERMISSION_DENIED' =>
-      'Izin Perangkat di sekitar diperlukan untuk menggunakan printer Bluetooth.',
+      'Izin Perangkat di sekitar ditolak. Buka Info Aplikasi ZePOS > Izin, '
+          'aktifkan Perangkat di sekitar, lalu tekan muat ulang.',
+    'BLUETOOTH_PERMISSION_BUSY' =>
+      'Menunggu jawaban izin Bluetooth. Jawab dialog izin, lalu tekan muat '
+          'ulang.',
     'BLUETOOTH_DISABLED' => 'Aktifkan Bluetooth lalu coba kembali.',
     'BLUETOOTH_NOT_SUPPORTED' =>
       'Perangkat ini tidak mendukung Bluetooth Classic.',

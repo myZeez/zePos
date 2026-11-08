@@ -48,6 +48,24 @@ abstract final class CashDrawerService {
   static bool get isSupported =>
       RawPrinterService.isSupported || BluetoothPrinterService.isSupported;
 
+  /// Opens the drawer for a finished sale, or does nothing when it should not.
+  ///
+  /// Returns null when no kick was due, so the caller can tell "skipped" apart
+  /// from "tried and failed". The drawer follows the money, not the paper: it
+  /// opens for cash only, since a QRIS or transfer puts nothing in it, and it
+  /// does not depend on a receipt being printed, so a shop that prints nothing
+  /// still gets its drawer. Reprinting a receipt never comes through here.
+  static Future<CashDrawerOutcome?> openForSale({
+    required PrintPurposeConfiguration configuration,
+    required bool isCashPayment,
+  }) async {
+    if (!isCashPayment || !configuration.policy.openCashDrawer) return null;
+    return open(
+      binding: configuration.binding,
+      pin: configuration.policy.cashDrawerPin,
+    );
+  }
+
   static Future<CashDrawerOutcome> open({
     required PrinterBinding? binding,
     int pin = 2,

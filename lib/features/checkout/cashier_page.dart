@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:zepos/core/formatting/formatters.dart';
 import 'package:zepos/core/hardware/barcode_scan_detector.dart';
 import 'package:zepos/core/hardware/camera_scanner.dart';
+import 'package:zepos/core/printing/cash_drawer_service.dart';
 import 'package:zepos/core/printing/label_print_validator.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/data/zepos_database.dart';
@@ -283,6 +286,10 @@ class _CashierPageState extends State<CashierPage> {
     await _loadProducts();
     widget.onSaleCompleted();
     if (!mounted) return;
+    // Started before the receipt so the drawer is open while the receipt is
+    // still printing, and not awaited so a slow Bluetooth link never holds up
+    // the confirmation the customer is waiting to see.
+    unawaited(_openDrawerForSale(paid.method == PaymentMethod.cash));
     final printerPreferences = await widget.database.loadPrinterPreferences();
     if (!mounted) return;
     if (printerPreferences.autoPrintReceipt) {
@@ -316,6 +323,25 @@ class _CashierPageState extends State<CashierPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _openDrawerForSale(bool isCashPayment) async {
+    try {
+      final configuration = await widget.database.loadPrintConfiguration(
+        PrintPurpose.receipt,
+      );
+      final outcome = await CashDrawerService.openForSale(
+        configuration: configuration,
+        isCashPayment: isCashPayment,
+      );
+      if (outcome == null || outcome.isSuccess || !mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(outcome.userMessage)));
+    } catch (_) {
+      // The sale is already recorded; a drawer that cannot be driven must not
+      // turn it into an error.
+    }
   }
 
   Future<void> _printReceipt(

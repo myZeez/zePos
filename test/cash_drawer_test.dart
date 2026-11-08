@@ -49,23 +49,64 @@ void main() {
     expect(CashDrawerOutcome.failed.isSuccess, isFalse);
   });
 
-  test('laci gagal tidak menurunkan status cetak yang berhasil', () {
-    const printed = PrintJobResult(
-      jobId: 'job-1',
-      state: PrintJobState.acceptedToSpooler,
-      userMessage: 'Nota dikirim ke printer.',
+  group('kapan laci dibuka untuk penjualan', () {
+    PrintPurposeConfiguration configuration({
+      required bool drawerOn,
+      PrinterBinding? printer,
+      int pin = 2,
+    }) => PrintPurposeConfiguration(
+      profile: BuiltInPrinterProfiles.forPurpose(PrintPurpose.receipt).first,
+      media: BuiltInPrinterProfiles.forPurpose(
+        PrintPurpose.receipt,
+      ).first.defaultMedia,
+      policy: PrintPolicy(
+        purpose: PrintPurpose.receipt,
+        openCashDrawer: drawerOn,
+        cashDrawerPin: pin,
+      ),
+      binding: printer,
     );
 
-    final withNotice = printed.withCashDrawerNotice(
-      CashDrawerOutcome.failed.userMessage,
-    );
+    test('pembayaran QRIS atau transfer tidak membuka laci', () async {
+      // Tidak ada uang tunai yang masuk, jadi laci tidak perlu terbuka.
+      final outcome = await CashDrawerService.openForSale(
+        configuration: configuration(drawerOn: true, printer: binding()),
+        isCashPayment: false,
+      );
 
-    // The sale and the receipt both succeeded; only the drawer did not open.
-    expect(withNotice.state, PrintJobState.acceptedToSpooler);
-    expect(withNotice.accepted, isTrue);
-    expect(withNotice.cashDrawerNotice, isNotNull);
-    expect(withNotice.userMessage, contains('Nota dikirim ke printer.'));
-    expect(withNotice.userMessage, contains('kunci manual'));
+      expect(outcome, isNull);
+    });
+
+    test('laci yang dimatikan tidak dibuka walau pembayaran tunai', () async {
+      final outcome = await CashDrawerService.openForSale(
+        configuration: configuration(drawerOn: false, printer: binding()),
+        isCashPayment: true,
+      );
+
+      expect(outcome, isNull);
+    });
+
+    test('pembayaran tunai dengan laci menyala mencoba membukanya', () async {
+      // Tanpa printer terpilih hasilnya "belum terhubung", bukan diam saja:
+      // kasir harus tahu laci tidak akan terbuka.
+      final outcome = await CashDrawerService.openForSale(
+        configuration: configuration(drawerOn: true),
+        isCashPayment: true,
+      );
+
+      expect(outcome, CashDrawerOutcome.notConfigured);
+    });
+
+    test('tidak bergantung pada nota dicetak atau tidak', () async {
+      // openForSale tidak menerima hasil cetak sama sekali, jadi toko yang
+      // mematikan cetak otomatis tetap mendapat lacinya.
+      final outcome = await CashDrawerService.openForSale(
+        configuration: configuration(drawerOn: true),
+        isCashPayment: true,
+      );
+
+      expect(outcome, isNotNull);
+    });
   });
 
   test('pin laci tersimpan dan terbaca kembali dari database', () {

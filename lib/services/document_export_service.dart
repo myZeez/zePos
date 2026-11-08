@@ -12,7 +12,6 @@ import 'package:printing/printing.dart';
 import 'package:zepos/core/export/file_delivery.dart';
 import 'package:zepos/core/formatting/formatters.dart';
 import 'package:zepos/core/printing/barcode_raster.dart';
-import 'package:zepos/core/printing/cash_drawer_service.dart';
 import 'package:zepos/core/printing/label_print_validator.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/core/printing/universal_print_service.dart';
@@ -530,7 +529,7 @@ class DocumentExportService {
       preferences: preferences,
       media: configuration.media,
     );
-    final result = await UniversalPrintService.dispatchPdf(
+    return UniversalPrintService.dispatchPdf(
       bytes: document,
       format: _receiptPageFormat(configuration.media, sale.items.length),
       jobName: 'Nota ${sale.sale.transactionNumber}',
@@ -540,19 +539,6 @@ class DocumentExportService {
       binding: configuration.binding,
       dedupeKey: 'receipt:${sale.sale.id}',
     );
-    if (!configuration.policy.openCashDrawer) return result;
-    // Only kick the drawer once the receipt actually reached the printer:
-    // the drawer hangs off that same printer, so a failed spool means the
-    // pulse has nowhere to go either.
-    if (!result.accepted) return result;
-    final drawer = await CashDrawerService.open(
-      binding: configuration.binding,
-      pin: configuration.policy.cashDrawerPin,
-    );
-    if (drawer.isSuccess) return result;
-    // The sale is recorded and the receipt is printed. Report the drawer
-    // separately rather than turning a completed sale into a failure.
-    return result.withCashDrawerNotice(drawer.userMessage);
   }
 
   static Future<Uint8List> buildReceiptPdf({

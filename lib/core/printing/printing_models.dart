@@ -211,7 +211,6 @@ class PrintJobResult {
     this.retrySafe = false,
     this.artifactPath,
     this.correlationId,
-    this.cashDrawerNotice,
   });
 
   final String jobId;
@@ -221,24 +220,6 @@ class PrintJobResult {
   final bool retrySafe;
   final String? artifactPath;
   final String? correlationId;
-
-  /// Set when the receipt printed but the cash drawer did not open. The print
-  /// state stays unchanged: the sale and the receipt both succeeded.
-  final String? cashDrawerNotice;
-
-  /// Carries a drawer problem back to the cashier without downgrading a print
-  /// that actually worked. The notice is folded into [userMessage] so it
-  /// surfaces even where only that string is displayed.
-  PrintJobResult withCashDrawerNotice(String notice) => PrintJobResult(
-    jobId: jobId,
-    state: state,
-    userMessage: '$userMessage $notice',
-    errorCode: errorCode,
-    retrySafe: retrySafe,
-    artifactPath: artifactPath,
-    correlationId: correlationId,
-    cashDrawerNotice: notice,
-  );
 
   bool get accepted => state == PrintJobState.acceptedToSpooler;
 

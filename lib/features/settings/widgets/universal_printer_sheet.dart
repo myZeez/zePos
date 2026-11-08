@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:zepos/core/printing/bluetooth_printer_service.dart';
+import 'package:zepos/core/printing/cash_drawer_service.dart';
 import 'package:zepos/core/printing/label_print_validator.dart';
 import 'package:zepos/core/printing/printing_models.dart';
 import 'package:zepos/core/printing/universal_print_service.dart';
@@ -116,6 +117,23 @@ class _UniversalPrinterSettingsSheetState
     setState(() {
       _bindPrinter(_drafts[_purpose]!, printer);
       _message = null;
+    });
+  }
+
+  Future<void> _testDrawer() async {
+    final draft = _drafts[_purpose]!;
+    setState(() {
+      _isTesting = true;
+      _message = null;
+    });
+    final outcome = await CashDrawerService.open(
+      binding: draft.configuration.binding,
+      pin: draft.cashDrawerPin,
+    );
+    if (!mounted) return;
+    setState(() {
+      _isTesting = false;
+      _message = outcome.userMessage;
     });
   }
 
@@ -278,6 +296,29 @@ class _UniversalPrinterSettingsSheetState
                       ],
                     ),
                   ),
+                ] else ...[
+                  const SizedBox(height: ZeSpace.sm),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(ZeSpace.sm),
+                    decoration: BoxDecoration(
+                      color: ZeColors.primarySoft,
+                      borderRadius: ZeRadius.control,
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.usb_outlined, color: ZeColors.primaryStrong),
+                        SizedBox(width: ZeSpace.xs),
+                        Expanded(
+                          child: Text(
+                            'Printer yang drivernya sudah terpasang di Windows, termasuk yang memakai kabel USB atau jaringan, muncul otomatis di daftar. Tekan muat ulang bila printer baru dicolok.',
+                            style: ZeText.body,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
                 const SizedBox(height: ZeSpace.lg),
                 SegmentedButton<PrintPurpose>(
@@ -321,6 +362,7 @@ class _UniversalPrinterSettingsSheetState
                           width: width,
                           child: DropdownButtonFormField<String>(
                             initialValue: draft.profile.id,
+                            isExpanded: true,
                             decoration: const InputDecoration(
                               labelText: 'Profil kemampuan',
                             ),
@@ -328,7 +370,10 @@ class _UniversalPrinterSettingsSheetState
                               for (final profile in profiles)
                                 DropdownMenuItem(
                                   value: profile.id,
-                                  child: Text(profile.displayName),
+                                  child: Text(
+                                    profile.displayName,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                             ],
                             onChanged: _isSaving
@@ -500,6 +545,67 @@ class _UniversalPrinterSettingsSheetState
                       'Disarankan untuk printer label agar orientasi 40 x 20 mm tidak terpotong.',
                     ),
                   ),
+                if (_purpose == PrintPurpose.receipt) ...[
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    value: draft.openCashDrawer,
+                    onChanged: _isSaving
+                        ? null
+                        : (value) =>
+                              setState(() => draft.openCashDrawer = value),
+                    title: const Text('Buka laci uang otomatis'),
+                    subtitle: Text(
+                      isAndroid
+                          ? 'Untuk laci yang tersambung ke port RJ11 printer nota Bluetooth. Terbuka saat pembayaran tunai.'
+                          : 'Untuk laci yang tersambung ke port RJ11 printer nota. Terbuka saat pembayaran tunai.',
+                    ),
+                  ),
+                  if (draft.openCashDrawer) ...[
+                    const SizedBox(height: ZeSpace.xs),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: draft.cashDrawerPin,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Kabel laci',
+                              helperText:
+                                  'Bila laci tidak terbuka, coba pilihan lain.',
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 2,
+                                child: Text('Pin 2 (umum)'),
+                              ),
+                              DropdownMenuItem(value: 5, child: Text('Pin 5')),
+                            ],
+                            onChanged: _isSaving
+                                ? null
+                                : (value) => setState(() {
+                                    if (value != null) {
+                                      draft.cashDrawerPin = value;
+                                    }
+                                  }),
+                          ),
+                        ),
+                        const SizedBox(width: ZeSpace.sm),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: OutlinedButton.icon(
+                            onPressed: _isSaving || _isTesting
+                                ? null
+                                : _testDrawer,
+                            icon: const Icon(Icons.lock_open_outlined),
+                            label: const Text('Tes laci'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
                 const Divider(height: ZeSpace.xl),
                 _MediaPresetEditor(
                   key: ValueKey(_purpose),
@@ -581,6 +687,7 @@ class _PrintConfigurationDraft {
     required this.fallbackToDialog,
     required this.usePrinterSettings,
     required this.openCashDrawer,
+    required this.cashDrawerPin,
     this.binding,
   });
 
@@ -595,6 +702,7 @@ class _PrintConfigurationDraft {
     fallbackToDialog: configuration.policy.fallbackToDialog,
     usePrinterSettings: configuration.policy.usePrinterSettings,
     openCashDrawer: configuration.policy.openCashDrawer,
+    cashDrawerPin: configuration.policy.cashDrawerPin,
     binding: configuration.binding,
   );
 
@@ -606,6 +714,7 @@ class _PrintConfigurationDraft {
   bool fallbackToDialog;
   bool usePrinterSettings;
   bool openCashDrawer;
+  int cashDrawerPin;
   PrinterBinding? binding;
 
   PrintPolicy get policy => PrintPolicy(
@@ -615,6 +724,7 @@ class _PrintConfigurationDraft {
     fallbackToDialog: fallbackToDialog,
     usePrinterSettings: usePrinterSettings,
     openCashDrawer: openCashDrawer,
+    cashDrawerPin: cashDrawerPin,
   );
 
   PrintPurposeConfiguration get configuration => PrintPurposeConfiguration(

@@ -478,14 +478,6 @@ void main() {
       expect(drawer, CashDrawerOutcome.notConfigured);
       expect(drawer.isSuccess, isFalse);
 
-      const printed = PrintJobResult(
-        jobId: 'job',
-        state: PrintJobState.acceptedToSpooler,
-        userMessage: 'Nota dikirim ke printer.',
-      );
-      final reported = printed.withCashDrawerNotice(drawer.userMessage);
-      expect(reported.accepted, isTrue);
-
       // The sale stands regardless of the drawer.
       final stored = await database.loadSaleDetail(receipt.saleId);
       expect(stored.sale.status, 'COMPLETED');

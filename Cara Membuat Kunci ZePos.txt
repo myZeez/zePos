@@ -1,0 +1,9 @@
+Cara Membuat Kunci ZePos
+
+pake powershell
+cd D:\PROJECT\ZePOS
+
+dart run tool/license_tool.dart issue Kode Perangkat "Nama User"
+
+Ini buat liat siapa saja yang udah beli
+dart run tool/license_tool.dart list
